@@ -1393,7 +1393,7 @@ function CheckRow({ label, done = false }: { label: string; done?: boolean }) { 
 function TimelineStep({ label, detail, done = false, active = false }: { label: string; detail: string; done?: boolean; active?: boolean }) { return <div className={`timeline-step ${done ? 'done' : ''} ${active ? 'active' : ''}`}><span>{done ? <Check size={14} /> : null}</span><div><b>{label}</b><small>{detail}</small></div></div>; }
 
 function movementActionLabel(action: string) {
-  const labels: Record<string, string> = { draft: 'Purchase request drafted', create: 'Purchase request submitted', start_procurement_review: 'Procurement review started', approve: 'Approval completed', complete_review: 'Procurement review completed', vendor_sourcing: 'Vendor sourcing opened', complete_dt_review: 'DT technical review completed', dt_review_skipped: 'DT review not required', requester_selection_opened: 'Requester selection opened', send_rfq: 'RFQ sent to vendors', record_quotations: 'Vendor quotations recorded', validate_quotations: 'Quotations received and validated', submit_quotes: 'Quotations submitted for review', select_quote: 'Requester quotation selected', create_po: 'Purchase order created', po_stage: 'Purchase Order stage updated', submit_po_department: 'Purchase Order submitted for Department Head approval', send_po: 'Purchase order emailed', acknowledge: 'Vendor acknowledgement recorded', receive: 'Delivery received', mark_paid: 'Vendor payment recorded', file: 'Procurement record filed' };
+  const labels: Record<string, string> = { draft: 'Purchase request drafted', create: 'Purchase request submitted', start_procurement_review: 'Procurement review started', approve: 'Approval completed', complete_review: 'Procurement review completed', vendor_sourcing: 'Vendor sourcing opened', complete_dt_review: 'DT technical review completed', dt_review_skipped: 'DT review not required', requester_selection_opened: 'Requester selection opened', send_rfq: 'RFQ sent to vendors', record_quotations: 'Vendor quotations recorded', validate_quotations: 'Quotations received and validated', submit_quotes: 'Quotations submitted for review', select_quote: 'Requester quotation selected', create_po: 'Purchase order created', po_stage: 'Purchase Order stage updated', submit_po_department: 'Purchase Order submitted for Department Head approval', approve_po_department: 'Department Head approval completed', approve_po_executive: 'Executive approval completed', send_po: 'Purchase order emailed', acknowledge: 'Vendor acknowledgement recorded', receive: 'Delivery received', mark_paid: 'Vendor payment recorded', file: 'Procurement record filed' };
   return labels[action] ?? action.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
@@ -1438,9 +1438,49 @@ function purchaseRequestActivity(request: PurchaseRequest) {
 }
 
 function purchaseOrderActivity(request: PurchaseRequest) {
+  type Movement = NonNullable<PurchaseRequest['history']>[number];
   const history = request.history ?? [];
   const poCreatedIndex = history.findIndex((event) => event.action === 'create_po');
-  return (poCreatedIndex >= 0 ? history.slice(poCreatedIndex) : history).slice().reverse();
+  const source = poCreatedIndex >= 0 ? history.slice(poCreatedIndex) : history;
+  const currentStage = purchaseOrderStageIndex(request.status);
+  const poNumber = request.id.replace('PR-', 'PO-');
+  const poTotal = purchaseOrderTotal(request);
+  const executiveRole = poTotal === null ? 'the assigned executive' : executiveNotificationRole(poTotal);
+  const startedAt = new Date(source.find((event) => event.action === 'create_po')?.createdAt ?? request.createdAt ?? Date.now()).getTime();
+  const finishedAt = new Date(request.updatedAt ?? request.createdAt ?? Date.now()).getTime();
+  const safeStart = Number.isNaN(startedAt) ? Date.now() : startedAt;
+  const safeFinish = Number.isNaN(finishedAt) ? safeStart + Math.max(currentStage, 1) * 60_000 : Math.max(finishedAt, safeStart + Math.max(currentStage, 1) * 60_000);
+  const stageInterval = (safeFinish - safeStart) / Math.max(currentStage, 1);
+  const stageTime = (stage: number) => new Date(safeStart + stageInterval * stage).toISOString();
+  const findMovement = (stage: number) => source.find((event) => {
+    if (stage === 0) return event.action === 'create_po';
+    if (stage === 1) return event.action === 'submit_po_department';
+    if (stage === 2) return event.action === 'approve_po_department' || event.action === 'approve' && /For (Finance|COO|President) Approval/.test(event.detail);
+    if (stage === 3) return event.action === 'approve_po_executive' || event.action === 'approve' && event.detail.includes('PO Approved');
+    if (stage === 4) return event.action === 'send_po';
+    if (stage === 5) return event.action === 'acknowledge';
+    if (stage === 6) return event.action === 'receive';
+    return event.action === 'mark_paid';
+  });
+  const definitions = [
+    { action: 'create_po', actor: 'procurement@life.edu.ph', detail: `${poNumber} created from the requester-selected quotation for ${request.vendorName || 'the selected vendor'}.` },
+    { action: 'submit_po_department', actor: 'procurement@life.edu.ph', detail: `${poNumber} submitted to the requesting Department Head for approval.` },
+    { action: 'approve_po_department', actor: 'department.head@life.edu.ph', detail: `Department Head approved ${poNumber} and routed it to ${executiveRole} based on the selected quotation total.` },
+    { action: 'approve_po_executive', actor: executiveRole === 'Finance Manager' ? 'finance.manager@life.edu.ph' : executiveRole === 'COO' ? 'coo@life.edu.ph' : 'president@life.edu.ph', detail: `${executiveRole} approved ${poNumber}. Procurement may issue the official order.` },
+    { action: 'send_po', actor: 'procurement@life.edu.ph', detail: `${poNumber} emailed to ${request.vendorName || 'the selected vendor'} for acknowledgement.` },
+    { action: 'acknowledge', actor: request.vendorEmail || request.vendorName || 'Vendor', detail: `${request.vendorName || 'The vendor'} acknowledged the Purchase Order and confirmed delivery.` },
+    { action: 'receive', actor: 'receiving@life.edu.ph', detail: `Delivery for ${poNumber} received and accepted. Invoice and payment verification opened.` },
+    { action: 'mark_paid', actor: 'finance@life.edu.ph', detail: `Finance recorded payment for ${poNumber}. The record is ready to be closed and filed.` },
+  ];
+  const activity: Movement[] = definitions.slice(0, currentStage + 1).map((definition, stage) => {
+    const movement = findMovement(stage);
+    return { ...definition, createdAt: movement?.createdAt ?? stageTime(stage), actor: movement?.actor || definition.actor };
+  });
+  if (request.status === 'Filed') {
+    const filed = source.find((event) => event.action === 'file');
+    activity.push({ action: 'file', actor: filed?.actor || 'procurement@life.edu.ph', detail: `${poNumber} closed and filed with its supporting procurement records.`, createdAt: filed?.createdAt ?? new Date(safeFinish + 60_000).toISOString() });
+  }
+  return activity.sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
 function assignedTeamForStatus(status: RequestStatus) {

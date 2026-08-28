@@ -146,6 +146,16 @@ test('purchase order list exposes every PO and document preview', async ({ page 
   await expect(page.getByRole('dialog')).toContainText('₱89,000');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 
+  await page.locator('.po-master-detail .queue-item').filter({ hasText: 'PO-2026-1018' }).click();
+  await expect(page.getByText('Stage 7 of 8')).toBeVisible();
+  await expect(page.locator('.po-activity-timeline .movement-event')).toHaveCount(7);
+  await expect(page.locator('.po-activity-timeline')).toContainText('Purchase order created');
+  await expect(page.locator('.po-activity-timeline')).toContainText('Department Head approval completed');
+  await expect(page.locator('.po-activity-timeline')).toContainText('Executive approval completed');
+  await expect(page.locator('.po-activity-timeline')).toContainText('Purchase order emailed');
+  await expect(page.locator('.po-activity-timeline')).toContainText('Vendor acknowledgement recorded');
+  await expect(page.locator('.po-activity-timeline')).toContainText('Delivery received');
+
   await page.evaluate(() => {
     const records = JSON.parse(window.localStorage.getItem('procurement-requests') ?? '[]');
     window.localStorage.setItem('procurement-requests', JSON.stringify(records.map((record: { id: string; rfqQuotes?: unknown[] }) => record.id === 'PR-2026-1009' ? { ...record, rfqQuotes: [] } : record)));
