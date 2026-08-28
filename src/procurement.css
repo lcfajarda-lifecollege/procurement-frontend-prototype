@@ -21,7 +21,7 @@
 .proc-page:has(.requests-actions-only) { position:relative; }
 .requests-actions-only { position:absolute; z-index:2; top:0; right:0; min-height:40px; justify-content:flex-end; margin:0; }
 .requests-actions-only + .proc-filterbar { min-height:40px; margin-top:0; padding-right:150px; }
-.rfq-list-card { padding:0; overflow:hidden; }.rfq-list-card .proc-card-header { margin:0; padding:16px; }.rfq-list-row { display:grid; grid-template-columns:42px minmax(0,1.5fr) minmax(180px,.7fr) auto 20px; align-items:center; gap:14px; width:100%; border:0; border-top:1px solid var(--line); background:transparent; color:var(--text); padding:15px 16px; text-align:left; cursor:pointer; }.rfq-list-row:hover { background:color-mix(in srgb,var(--maroon) 5%,transparent); }.rfq-list-row>span { min-width:0; }.rfq-list-row b,.rfq-list-row small { display:block; }.rfq-list-row small { margin-top:4px; color:var(--muted); }.rfq-list-row>strong { color:var(--maroon-strong); font-family:"Crimson Pro",Georgia,serif; font-size:20px; }.rfq-list-icon { display:grid; width:40px; height:40px; place-items:center; border-radius:8px; background:color-mix(in srgb,var(--maroon) 10%,var(--panel)); color:var(--maroon-strong); }.rfq-row-chevron { color:var(--muted); }
+.rfq-list-card { padding:0; overflow:hidden; }.rfq-list-card .proc-card-header { margin:0; padding:16px; }.rfq-list-row { display:grid; grid-template-columns:42px minmax(0,1.5fr) minmax(180px,.7fr) 20px; align-items:center; gap:14px; width:100%; border:0; border-top:1px solid var(--line); background:transparent; color:var(--text); padding:15px 16px; text-align:left; cursor:pointer; }.rfq-list-row:hover { background:color-mix(in srgb,var(--maroon) 5%,transparent); }.rfq-list-row>span { min-width:0; }.rfq-list-row b,.rfq-list-row small { display:block; }.rfq-list-row small { margin-top:4px; color:var(--muted); }.rfq-list-icon { display:grid; width:40px; height:40px; place-items:center; border-radius:8px; background:color-mix(in srgb,var(--maroon) 10%,var(--panel)); color:var(--maroon-strong); }.rfq-row-chevron { color:var(--muted); }
 .procurement-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:-10px 0 22px; border-bottom:1px solid var(--line); padding:0 0 16px; }
 .procurement-toolbar p { margin:4px 0 0; color:var(--muted); font-size:13px; }
 .role-preview-toolbar { justify-content:flex-end; }
@@ -694,7 +694,7 @@
   .proc-hero,.page-heading-card,.proc-card { max-width:100%; }
   .metric-grid { grid-template-columns:1fr; }
   .rfq-list-row { grid-template-columns:40px minmax(0,1fr) auto; }
-  .rfq-list-row>span:nth-of-type(3),.rfq-list-row>strong { display:none; }
+  .rfq-list-row>span:nth-of-type(3) { display:none; }
   .user-assignment-footer { align-items:stretch; flex-direction:column; }
   .vendor-profile-grid { grid-template-columns:1fr; }
 }
