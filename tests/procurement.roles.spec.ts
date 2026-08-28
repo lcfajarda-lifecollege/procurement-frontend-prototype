@@ -91,6 +91,12 @@ test('procurement officer has sourcing tools but cannot mark a purchase paid', a
   await expect(page.getByText('₱128,500')).toHaveCount(0);
   await expect(page.getByText(/estimated/i)).toHaveCount(0);
   await expect(page.getByText('Review specifications and quantities')).toBeVisible();
+  await expect(page.getByText('Procurement validation')).toHaveCount(0);
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Complete review and begin sourcing' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Return for clarification' })).toBeDisabled();
+  await page.getByRole('textbox', { name: 'Procurement review notes' }).fill('Please clarify the delivery deadline.');
+  await expect(page.getByRole('button', { name: 'Return for clarification' })).toBeEnabled();
   await page.getByRole('button', { name: 'Back to all RFQs & Sourcing' }).click();
   await page.getByRole('button', { name: 'Receiving' }).click();
   await expect(page.getByRole('button', { name: 'Mark paid' })).toHaveCount(0);
