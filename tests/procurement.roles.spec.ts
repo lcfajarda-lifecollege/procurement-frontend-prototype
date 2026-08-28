@@ -134,7 +134,8 @@ test('purchase order list exposes every PO and document preview', async ({ page 
   await expect(page.getByRole('heading', { name: /Purchase orders \(\d+\)/i })).toBeVisible();
   const rows = page.locator('.queue-card .queue-item');
   expect(await rows.count()).toBeGreaterThan(1);
-  await expect(rows.first()).toContainText('₱89,000');
+  await expect(rows.first()).not.toContainText('₱89,000');
+  await expect(page.locator('.po-master-detail .queue-card')).not.toContainText('₱');
   await expect(page.locator('.po-total')).toContainText('PO total');
   await expect(page.locator('.po-total')).toContainText('₱89,000');
   await expect(page.getByText('Purchase Order activity', { exact: true })).toBeVisible();
