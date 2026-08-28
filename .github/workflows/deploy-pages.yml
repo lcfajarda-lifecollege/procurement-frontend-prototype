@@ -27,6 +27,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install ffmpeg
       - run: pnpm test:e2e
       - run: pnpm build
         env:
