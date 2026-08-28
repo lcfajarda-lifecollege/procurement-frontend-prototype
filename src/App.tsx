@@ -481,7 +481,7 @@ function BrandLockup({ branding, compact = false }: { branding: Branding; compac
   return (
     <div className="brand-lockup">
       <span className="brand-mark">
-        <img src="/lifeos-platform-crest.svg" alt="" />
+        <img src={`${import.meta.env.BASE_URL}lifeos-platform-crest.svg`} alt="" />
       </span>
       <span>
         <strong>{branding.brandName}</strong>
