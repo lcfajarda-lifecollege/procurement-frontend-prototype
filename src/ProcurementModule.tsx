@@ -567,7 +567,7 @@ function RequestsView({ requests, role, requesterName, onNavigate, onNew }: { re
         <div className="movement-history-title"><strong>Requested products</strong><span>{selected.items?.length ?? 0} {(selected.items?.length ?? 0) === 1 ? 'product line' : 'product lines'}</span></div>
         <div className="request-detail-items">{selected.items?.length ? selected.items.map((item, index) => <div key={`${item.name}-${index}`}><span><b>{item.name}</b><small>{item.category} · {itemUom(item)}</small><em>{itemDescription(item)}</em></span><span>{item.quantity} {itemUom(item)} × {money.format(item.unitPrice)}</span><strong>{money.format(item.quantity * item.unitPrice)}</strong></div>) : <p>No product lines recorded.</p>}</div>
         <div className="movement-history-title request-activity-heading"><strong>Activity history</strong><span>Latest first</span></div>
-        <div className="request-activity-list">{(selected.history?.length ? selected.history : [{ action: 'create', actor: selected.requester, detail: `Created with status ${selected.status}`, createdAt: selected.createdAt ?? '' }]).slice().reverse().map((event, index) => <div className="movement-event" key={`${event.createdAt}-${event.action}-${index}`}><span><Check size={13} /></span><div><b>{movementActionLabel(event.action)}</b><p>{event.detail}</p><small>{event.actor} · {formatMovementTime(event.createdAt)}</small></div></div>)}</div>
+        <div className="request-activity-list">{purchaseRequestActivity(selected).map((event, index) => <div className="movement-event" key={`${event.createdAt}-${event.action}-${index}`}><span><Check size={13} /></span><div><b>{movementActionLabel(event.action)}</b><p>{event.detail}</p><small>{event.actor} · {formatMovementTime(event.createdAt)}</small></div></div>)}</div>
       </section>
     </div> : <section className="proc-card table-empty">No purchase requests match the current search or filter.</section>}
   </div>;
@@ -1359,7 +1359,7 @@ function PurchaseRequestModal({ request, onClose }: { request: PurchaseRequest; 
       <div className="pr-journey modal-journey">{purchaseRequestLifecycleLabels.map((label, index) => <div className={`${index < currentIndex ? 'complete' : ''} ${index === currentIndex ? 'current' : ''}`} key={label}><span>{index < currentIndex ? <Check size={12} /> : index + 1}</span><small>{label}</small></div>)}</div>
       {request.items?.length ? <><div className="movement-history-title"><strong>Requested products</strong><span>{request.items.length} {request.items.length === 1 ? 'product line' : 'product lines'}</span></div><div className="pr-modal-items">{request.items.map((item, index) => <div key={`${item.name}-${index}`}><span><b>{item.name}</b><small>{item.category} · {itemUom(item)}</small><em>{itemDescription(item)}</em></span><span>{item.quantity} {itemUom(item)} × {money.format(item.unitPrice)}</span><strong>{money.format(item.quantity * item.unitPrice)}</strong></div>)}</div></> : null}
       <div className="movement-history-title"><strong>Activity history</strong><span>Latest first</span></div>
-      <div className="movement-timeline">{(request.history ?? []).slice().reverse().map((event, index) => <div className="movement-event" key={`${event.createdAt}-${index}`}><span><Check size={13} /></span><div><b>{movementActionLabel(event.action)}</b><p>{event.detail}</p><small>{event.actor} · {formatMovementTime(event.createdAt)}</small></div></div>)}</div>
+      <div className="movement-timeline">{purchaseRequestActivity(request).map((event, index) => <div className="movement-event" key={`${event.createdAt}-${index}`}><span><Check size={13} /></span><div><b>{movementActionLabel(event.action)}</b><p>{event.detail}</p><small>{event.actor} · {formatMovementTime(event.createdAt)}</small></div></div>)}</div>
     </section>
   </div>;
 }
@@ -1377,8 +1377,48 @@ function CheckRow({ label, done = false }: { label: string; done?: boolean }) { 
 function TimelineStep({ label, detail, done = false, active = false }: { label: string; detail: string; done?: boolean; active?: boolean }) { return <div className={`timeline-step ${done ? 'done' : ''} ${active ? 'active' : ''}`}><span>{done ? <Check size={14} /> : null}</span><div><b>{label}</b><small>{detail}</small></div></div>; }
 
 function movementActionLabel(action: string) {
-  const labels: Record<string, string> = { create: 'Purchase request submitted', approve: 'Approval completed', complete_review: 'Procurement review completed', complete_dt_review: 'DT technical review completed', send_rfq: 'RFQ sent to vendors', record_quotations: 'Vendor quotations recorded', validate_quotations: 'Quotations received and validated', submit_quotes: 'Quotations submitted for review', select_quote: 'Requester quotation selected', create_po: 'Purchase order created', po_stage: 'Purchase Order stage updated', submit_po_department: 'Purchase Order submitted for Department Head approval', send_po: 'Purchase order emailed', acknowledge: 'Vendor acknowledgement recorded', receive: 'Delivery received', mark_paid: 'Vendor payment recorded', file: 'Procurement record filed' };
+  const labels: Record<string, string> = { draft: 'Purchase request drafted', create: 'Purchase request submitted', start_procurement_review: 'Procurement review started', approve: 'Approval completed', complete_review: 'Procurement review completed', vendor_sourcing: 'Vendor sourcing opened', complete_dt_review: 'DT technical review completed', dt_review_skipped: 'DT review not required', requester_selection_opened: 'Requester selection opened', send_rfq: 'RFQ sent to vendors', record_quotations: 'Vendor quotations recorded', validate_quotations: 'Quotations received and validated', submit_quotes: 'Quotations submitted for review', select_quote: 'Requester quotation selected', create_po: 'Purchase order created', po_stage: 'Purchase Order stage updated', submit_po_department: 'Purchase Order submitted for Department Head approval', send_po: 'Purchase order emailed', acknowledge: 'Vendor acknowledgement recorded', receive: 'Delivery received', mark_paid: 'Vendor payment recorded', file: 'Procurement record filed' };
   return labels[action] ?? action.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function purchaseRequestActivity(request: PurchaseRequest) {
+  type Movement = NonNullable<PurchaseRequest['history']>[number];
+  const source = [...(request.history ?? [])];
+  const poCreatedIndex = source.findIndex((event) => event.action === 'create_po');
+  const history = poCreatedIndex >= 0 ? source.slice(0, poCreatedIndex + 1) : source;
+  const currentStage = workflowStageIndex(request.status);
+  const requesterActor = history.find((event) => event.action === 'create')?.actor ?? request.requester;
+  const baseTime = new Date(request.createdAt ?? request.updatedAt ?? Date.now()).getTime();
+  const at = (value: number) => new Date(value).toISOString();
+  const eventTime = (action: string, fallback: number) => {
+    const value = history.find((event) => event.action === action)?.createdAt;
+    const parsed = value ? new Date(value).getTime() : Number.NaN;
+    return Number.isNaN(parsed) ? fallback : parsed;
+  };
+  const ensure = (stage: number, action: string, actor: string, detail: string, createdAt: number, alternatives: string[] = []) => {
+    if (currentStage < stage || history.some((event) => event.action === action || alternatives.includes(event.action))) return;
+    history.push({ action, actor, detail, createdAt: at(createdAt) });
+  };
+
+  ensure(0, 'draft', requesterActor, 'Purchase Request details, products, quantities, specifications, required date, and estimate were prepared.', baseTime - 30 * 60_000);
+  ensure(1, 'create', requesterActor, submissionActivityDetail(request.amount), baseTime);
+  ensure(2, 'start_procurement_review', 'procurement@life.edu.ph', 'Procurement opened the submitted request for completeness and sourcing review.', baseTime + 30 * 60_000, ['complete_review']);
+  const reviewTime = eventTime('complete_review', baseTime + 60 * 60_000);
+  ensure(3, 'complete_review', 'procurement@life.edu.ph', 'Procurement review completed and the request moved to vendor sourcing.', reviewTime);
+  ensure(3, 'vendor_sourcing', 'procurement@life.edu.ph', `Qualified vendor sourcing opened${request.rfqQuotes?.length ? ` for ${request.rfqQuotes.length} vendors` : ''}.`, reviewTime + 60_000);
+  const sourcingTime = eventTime('vendor_sourcing', reviewTime + 60_000);
+  ensure(4, 'send_rfq', 'procurement@life.edu.ph', 'RFQ sent to the qualified vendor shortlist.', sourcingTime + 60_000);
+  const rfqTime = eventTime('send_rfq', sourcingTime + 60_000);
+  ensure(5, 'record_quotations', 'procurement@life.edu.ph', 'Vendor quotations received and organized for comparison.', rfqTime + 60_000, ['validate_quotations']);
+  const quotationTime = eventTime('record_quotations', rfqTime + 60_000);
+  ensure(6, 'submit_quotes', 'procurement@life.edu.ph', requestIncludesTechnology(request) ? 'Technology quotation lines routed to the Digital Transformation Team.' : 'No technology products require DT review.', quotationTime + 60_000, ['complete_dt_review', 'dt_review_skipped']);
+  if (!requestIncludesTechnology(request)) ensure(6, 'dt_review_skipped', 'procurement@life.edu.ph', 'DT review skipped because the request contains no technology products.', quotationTime + 2 * 60_000);
+  const reviewCompletedTime = eventTime('complete_dt_review', quotationTime + 2 * 60_000);
+  ensure(7, 'requester_selection_opened', 'procurement@life.edu.ph', 'Qualified quotations released to the requester for vendor selection.', reviewCompletedTime + 60_000, ['select_quote']);
+  const selectionTime = eventTime('select_quote', reviewCompletedTime + 60_000);
+  ensure(8, 'select_quote', requesterActor, `Requester selected ${request.vendorName || 'the preferred vendor'} and completed the Purchase Request lifecycle.`, selectionTime, ['create_po']);
+
+  return history.sort((left: Movement, right: Movement) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }
 
 function purchaseOrderActivity(request: PurchaseRequest) {

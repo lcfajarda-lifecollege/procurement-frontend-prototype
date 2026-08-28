@@ -52,6 +52,16 @@ test('dashboard workflow stages reveal details on hover', async ({ page }) => {
   await expect(rfqStage.locator('.stage-tooltip')).toContainText('Requests for Quotation');
 });
 
+test('purchase request activity explains every reached lifecycle stage', async ({ page }) => {
+  await viewAs(page, 'Super Admin');
+  await page.getByRole('button', { name: 'Purchase Requests' }).click();
+  await page.locator('.queue-card .queue-item').filter({ hasText: 'PR-2026-1005' }).click();
+  await expect(page.getByText('Stage 5 of 9', { exact: false })).toBeVisible();
+  await expect(page.locator('.request-activity-list .movement-event')).toHaveCount(5);
+  await expect(page.locator('.request-activity-list')).toContainText('Purchase request drafted');
+  await expect(page.locator('.request-activity-list')).toContainText('Vendor sourcing opened');
+});
+
 test('requester can open a multi-item purchase request form with technology routing', async ({ page }) => {
   await viewAs(page, 'Requester');
   await page.getByRole('button', { name: 'Purchase Requests' }).click();
