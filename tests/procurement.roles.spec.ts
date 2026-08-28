@@ -86,6 +86,12 @@ test('procurement officer has sourcing tools but cannot mark a purchase paid', a
   await viewAs(page, 'Procurement Officer');
   await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
   await expect(page.getByRole('heading', { name: /All RFQs|Procurement Review|RFQ & Vendor Sourcing/ })).toBeVisible();
+  await page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1003' }).click();
+  await expect(page.getByRole('heading', { name: 'Procurement Review', exact: true })).toBeVisible();
+  await expect(page.getByText('₱128,500')).toHaveCount(0);
+  await expect(page.getByText(/estimated/i)).toHaveCount(0);
+  await expect(page.getByText('Review specifications and quantities')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to all RFQs & Sourcing' }).click();
   await page.getByRole('button', { name: 'Receiving' }).click();
   await expect(page.getByRole('button', { name: 'Mark paid' })).toHaveCount(0);
 });
