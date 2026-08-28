@@ -98,6 +98,17 @@ test('procurement officer has sourcing tools but cannot mark a purchase paid', a
   await page.getByRole('textbox', { name: 'Procurement review notes' }).fill('Please clarify the delivery deadline.');
   await expect(page.getByRole('button', { name: 'Return for clarification' })).toBeEnabled();
   await page.getByRole('button', { name: 'Back to all RFQs & Sourcing' }).click();
+  const twoLotRfq = page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1022' });
+  await expect(twoLotRfq).toContainText('2 sourcing lots · 4 vendors');
+  await twoLotRfq.click();
+  await expect(page.locator('.sourcing-lot-tabs button')).toHaveCount(2);
+  await expect(page.locator('.sourcing-lot-tabs')).toContainText('Technology');
+  await expect(page.locator('.sourcing-lot-tabs')).toContainText('Operational supplies');
+  await expect(page.locator('.vendor-quotation-entry')).toHaveCount(2);
+  await page.locator('.sourcing-lot-tabs button').filter({ hasText: 'Operational supplies' }).click();
+  await expect(page.locator('.locked-pr-products')).toContainText('Printer Ink');
+  await expect(page.locator('.locked-pr-products')).toContainText('Bond Paper A4');
+  await expect(page.locator('.vendor-quotation-entry')).toHaveCount(2);
   await page.getByRole('button', { name: 'Receiving' }).click();
   await expect(page.getByRole('button', { name: 'Mark paid' })).toHaveCount(0);
 });
