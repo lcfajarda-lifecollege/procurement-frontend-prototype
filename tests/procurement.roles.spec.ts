@@ -112,11 +112,15 @@ test('purchase order list exposes every PO and document preview', async ({ page 
   await expect(page.getByRole('heading', { name: /Purchase orders \(\d+\)/i })).toBeVisible();
   const rows = page.locator('.queue-card .queue-item');
   expect(await rows.count()).toBeGreaterThan(1);
+  await expect(rows.first()).toContainText('₱89,000');
+  await expect(page.locator('.po-total')).toContainText('PO total');
+  await expect(page.locator('.po-total')).toContainText('₱89,000');
   await expect(page.getByText('Purchase Order activity', { exact: true })).toBeVisible();
   await expect(page.locator('.po-activity-timeline .movement-event')).toHaveCount(1);
   await expect(page.locator('.po-activity-timeline')).toContainText('Purchase order created');
   await page.getByRole('button', { name: 'View PO PDF' }).click();
   await expect(page.getByRole('dialog')).toContainText('Purchase Order');
+  await expect(page.getByRole('dialog')).toContainText('₱89,000');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 });
 
