@@ -168,6 +168,33 @@ test('purchase order list exposes every PO and document preview', async ({ page 
   await expect(page.locator('.po-card')).not.toContainText('₱90,000');
 });
 
+test('multi-category request awards vendors by sourcing lot and creates separate POs', async ({ page }) => {
+  await viewAs(page, 'Super Admin');
+  await page.goto('/requests/PR-2026-1021/vendor-selection');
+  await expect(page.getByRole('heading', { name: 'Smart Classroom Equipment Renewal' })).toBeVisible();
+  const lots = page.getByTestId('requester-sourcing-lot');
+  await expect(lots).toHaveCount(2);
+  await expect(lots.nth(0)).toContainText('Technology');
+  await expect(lots.nth(1)).toContainText('Furniture');
+
+  await lots.nth(0).locator('.requester-quote-choice').first().click();
+  await lots.nth(1).locator('.requester-quote-choice').nth(1).click();
+  await page.getByRole('button', { name: 'Confirm vendor awards' }).click();
+  await expect(page).toHaveURL(/\/requests$/);
+  await expect(page.locator('.queue-card .queue-item').filter({ hasText: 'PR-2026-1021' })).toContainText('Ready for PO Creation');
+
+  await viewAs(page, 'Procurement Officer');
+  await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
+  await page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1021' }).click();
+  await expect(page.getByRole('button', { name: 'Technology form' })).toBeVisible();
+  await expect(page.locator('.sourcing-lot-tabs button')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Create 2 POs' }).click();
+
+  await page.getByRole('button', { name: 'Purchase Orders' }).click();
+  await expect(page.locator('.queue-card')).toContainText('PO-2026-1021-01');
+  await expect(page.locator('.queue-card')).toContainText('PO-2026-1021-02');
+});
+
 test('desktop pages do not create horizontal viewport overflow', async ({ page }) => {
   const issues: string[] = [];
   for (const path of ['/dashboard', '/requests', '/sourcing', '/purchase-orders', '/receiving', '/vendors', '/products', '/administration']) {

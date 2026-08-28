@@ -42,7 +42,15 @@ type RfqVendorQuote = {
   warranty: string;
   validUntil: string;
   attachmentName?: string;
+  lotCategories?: string[];
   items: Array<{ name: string; unitPrice: number }>;
+};
+
+type SourcingAward = {
+  category: string;
+  vendorName: string;
+  vendorEmail: string;
+  quoteReference: string;
 };
 
 const roleAccess: Record<Role, { scope: string; modules: string; paths: string[] }> = {
@@ -74,6 +82,10 @@ interface PurchaseRequest {
   history?: Array<{ action: string; actor: string; detail: string; createdAt: string }>;
   vendorName?: string;
   vendorEmail?: string;
+  sourcingAwards?: SourcingAward[];
+  sourceRequestId?: string;
+  poNumber?: string;
+  sourcingLotCategory?: string;
   rfqQuotes?: RfqVendorQuote[];
   procurementValidationNotes?: string;
   procurementValidatedAt?: string;
@@ -97,6 +109,41 @@ const money = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP
 function requestCategories(request: PurchaseRequest) {
   const itemCategories = request.items?.map((item) => item.category.trim()).filter(Boolean) ?? [];
   return [...new Set(itemCategories.length ? itemCategories : [request.category])];
+}
+
+type SourcingLot = { category: string; items: PurchaseRequestItem[] };
+
+function sourcingLots(request: PurchaseRequest): SourcingLot[] {
+  const groups = new Map<string, PurchaseRequestItem[]>();
+  for (const item of request.items ?? []) {
+    const category = item.category.trim() || request.category;
+    groups.set(category, [...(groups.get(category) ?? []), item]);
+  }
+  if (!groups.size) groups.set(request.category, []);
+  return [...groups].map(([category, items]) => ({ category, items }));
+}
+
+function quoteLotCategories(request: PurchaseRequest, quote: RfqVendorQuote) {
+  if (quote.lotCategories?.length) return quote.lotCategories;
+  const quotedNames = new Set(quote.items.map((item) => item.name));
+  return sourcingLots(request).filter((lot) => lot.items.some((item) => quotedNames.has(item.name))).map((lot) => lot.category);
+}
+
+function quoteSupportsLot(request: PurchaseRequest, quote: RfqVendorQuote, lot: SourcingLot) {
+  return quoteLotCategories(request, quote).includes(lot.category) && lot.items.every((item) => quote.items.some((quotedItem) => quotedItem.name === item.name));
+}
+
+function lotQuoteTotal(lot: SourcingLot, quote?: RfqVendorQuote) {
+  if (!quote) return 0;
+  return lot.items.reduce((total, item) => total + item.quantity * (quote.items.find((quotedItem) => quotedItem.name === item.name)?.unitPrice ?? 0), 0);
+}
+
+function purchaseOrderNumber(request: PurchaseRequest) {
+  return request.poNumber ?? request.id.replace('PR-', 'PO-');
+}
+
+function sourcePurchaseRequestNumber(request: PurchaseRequest) {
+  return request.sourceRequestId ?? request.id;
 }
 
 function requestIncludesTechnology(request: PurchaseRequest) {
@@ -318,6 +365,42 @@ export default function ProcurementModule({ activePath, sessionUser, onNavigate,
 
   async function runAction(id: string, action: string) {
     let nextStatus: RequestStatus | null = null;
+    if (action === 'create_po') {
+      setRequests((current) => current.flatMap((item) => {
+        if (item.id !== id) return [item];
+        const lots = sourcingLots(item);
+        const awards = item.sourcingAwards?.length ? item.sourcingAwards : item.vendorName ? [{ category: lots[0]?.category ?? item.category, vendorName: item.vendorName, vendorEmail: item.vendorEmail ?? '', quoteReference: item.rfqQuotes?.find((quote) => quote.vendorName === item.vendorName)?.reference ?? '' }] : [];
+        if (!awards.length || awards.length < lots.length) return [item];
+        const createdAt = new Date().toISOString();
+        return awards.map((award, index) => {
+          const lot = lots.find((candidate) => candidate.category === award.category) ?? lots[index];
+          const suffix = awards.length > 1 ? `-${String(index + 1).padStart(2, '0')}` : '';
+          const poNumber = `${item.id.replace('PR-', 'PO-')}${suffix}`;
+          const lotItems = lot?.items ?? item.items ?? [];
+          const selectedQuote = item.rfqQuotes?.find((quote) => quote.vendorName === award.vendorName);
+          const lotEstimate = lotItems.reduce((total, product) => total + product.quantity * product.unitPrice, 0);
+          return {
+            ...item,
+            id: awards.length > 1 ? `${item.id}-${String(index + 1).padStart(2, '0')}` : item.id,
+            sourceRequestId: item.id,
+            poNumber,
+            sourcingLotCategory: award.category,
+            category: award.category,
+            amount: lotEstimate,
+            items: lotItems,
+            vendorName: award.vendorName,
+            vendorEmail: award.vendorEmail,
+            sourcingAwards: [award],
+            rfqQuotes: selectedQuote ? [{ ...selectedQuote, lotCategories: [award.category], items: selectedQuote.items.filter((quotedItem) => lotItems.some((product) => product.name === quotedItem.name)) }] : [],
+            status: 'PO Draft' as RequestStatus,
+            updatedAt: createdAt,
+            history: [...(item.history ?? []), { action, actor: 'procurement@life.edu.ph', detail: `${poNumber} created for the ${award.category} sourcing lot and awarded to ${award.vendorName}.`, createdAt }],
+          };
+        });
+      }));
+      notify(`${id}: Purchase Orders created by sourcing lot`);
+      return;
+    }
     setRequests((current) => current.map((item) => {
       if (item.id !== id) return item;
       if (action === 'approve') {
@@ -329,7 +412,6 @@ export default function ProcurementModule({ activePath, sessionUser, onNavigate,
       else if (action === 'record_quotations') nextStatus = 'Quotations Received';
       else if (action === 'submit_quotes') nextStatus = requestIncludesTechnology(item) ? 'For DT Approval' : 'For Requester Selection';
       else if (action === 'select_quote') nextStatus = 'Ready for PO Creation';
-      else if (action === 'create_po') nextStatus = 'PO Draft';
       else if (action === 'submit_po_department') nextStatus = 'For Department Approval';
       else if (action === 'send_po') nextStatus = 'PO Awaiting Acknowledgement';
       else if (action === 'acknowledge') nextStatus = 'PO Acknowledged';
@@ -360,9 +442,12 @@ export default function ProcurementModule({ activePath, sessionUser, onNavigate,
     if (vendorQuotationMatch) {
       const request = requests.find((item) => item.id === decodeURIComponent(vendorQuotationMatch[1]));
       if (!request) return <div className="vendor-link-error"><AlertTriangle size={24} /><h2>Quotation link unavailable</h2><p>The RFQ could not be found or this prototype link is no longer valid.</p></div>;
-      const vendorEmail = new URLSearchParams(window.location.search).get('vendor');
+      const quotationParams = new URLSearchParams(window.location.search);
+      const vendorEmail = quotationParams.get('vendor');
+      const lotCategory = quotationParams.get('lot');
       const quote = request.rfqQuotes?.find((item) => !vendorEmail || item.vendorEmail === vendorEmail) ?? request.rfqQuotes?.[0];
-      return <VendorRfqMagicLinkPreview request={request} quote={quote} initialView="form" standalone onClose={() => window.close()} />;
+      const scopedRequest = lotCategory ? { ...request, category: lotCategory, items: request.items?.filter((item) => item.category === lotCategory) } : request;
+      return <VendorRfqMagicLinkPreview request={scopedRequest} quote={quote} initialView="form" standalone onClose={() => window.close()} />;
     }
     const vendorSelectionMatch = activePath.match(/^\/requests\/([^/]+)\/vendor-selection$/);
     const dtQuotationReviewMatch = activePath.match(/^\/approvals\/([^/]+)\/quotation-review$/);
@@ -383,7 +468,7 @@ export default function ProcurementModule({ activePath, sessionUser, onNavigate,
     if (activePath === '/requests') return <RequestsView requests={requests} role={role} requesterName={sessionUser?.name ?? ''} onNavigate={onNavigate} onNew={() => onNavigate('/requests/new')} />;
     if (activePath === '/requests/new') return <NewRequestPage onBack={() => onNavigate('/requests')} onSubmit={async (draft) => { const createdAt = new Date().toISOString(); const request = { ...draft, requester: sessionUser?.name ?? 'Angela Mendoza', department: 'Academic Affairs', createdAt, updatedAt: createdAt, history: [{ action: 'create', actor: sessionUser?.email ?? 'prototype@life.edu.ph', detail: submissionActivityDetail(draft.amount), createdAt }] }; setRequests((current) => [request, ...current]); notify(`${request.id} submitted successfully`); onNavigate('/requests'); return true; }} />;
     if (activePath === '/approvals') return <ApprovalsQueueView requests={requests} role={role} onApprove={(id) => runAction(id, 'approve')} onNotify={notify} onNavigate={onNavigate} />;
-    if (activePath === '/sourcing') return <MultiSourcingView requests={requests.filter((item) => ['For Procurement Review','RFQ Draft','RFQ Sent','Quotations Received','Ready for PO Creation'].includes(item.status))} onAction={runAction} onVendorSaved={(updated) => setRequests((current) => current.map((item) => item.id === updated.id ? updated : item))} onNotify={notify} />;
+    if (activePath === '/sourcing') return <MultiSourcingView requests={requests.filter((item) => ['For Procurement Review','RFQ Draft','RFQ Sent','Quotations Received','For DT Approval','For Requester Selection','Ready for PO Creation'].includes(item.status))} onAction={runAction} onVendorSaved={(updated) => setRequests((current) => current.map((item) => item.id === updated.id ? updated : item))} onNotify={notify} />;
     if (activePath === '/purchase-orders') return <PurchaseOrdersView requests={requests.filter((item) => ['PO Draft','For Department Approval','For Finance Approval','For COO Approval','For President Approval','PO Approved','PO Awaiting Acknowledgement','PO Acknowledged','Partially Received','Received','Paid','Filed'].includes(item.status))} role={role} onAction={runAction} />;
     if (activePath === '/receiving') return <ReceivingQueueView requests={requests.filter((item) => ['PO Acknowledged','Partially Received','Received','Paid'].includes(item.status))} role={role} onAction={runAction} />;
     if (activePath === '/vendors') return <VendorsView requests={requests} role={role} onNotify={notify} />;
@@ -590,9 +675,10 @@ function RequestsView({ requests, role, requesterName, onNavigate, onNew }: { re
 
 function RequesterQuotationSelectionPage({ request, onBack, onRequestSaved, onComplete }: { request: PurchaseRequest; onBack: () => void; onRequestSaved: (request: PurchaseRequest) => void; onComplete: () => void }) {
   if (request.status !== 'For Requester Selection') return <div className="proc-page"><section className="quotation-selection-toolbar"><button className="proc-secondary" type="button" onClick={onBack}><ArrowLeft size={16} />Back to Purchase Request</button><div><span className="proc-eyebrow">{request.id}</span><h2>Vendor selection is no longer required</h2><p>This request has already moved to {request.status}.</p></div></section></div>;
+  const lots = sourcingLots(request);
   return <div className="proc-page quotation-selection-page">
-    <section className="quotation-selection-toolbar requester-selection-toolbar"><div className="requester-selection-toolbar-top"><button className="proc-secondary" type="button" onClick={onBack}><ArrowLeft size={16} />Back to Purchase Request</button><StatusBadge>{request.status}</StatusBadge></div><div className="requester-selection-toolbar-copy"><span className="proc-eyebrow">{request.id} · Requester decision</span><h2>{request.title}</h2><p>Review the complete quotations and select one vendor for all items in this Purchase Request.</p></div></section>
-    <section className="quotation-request-summary"><Detail label="Department" value={request.department} /><Detail label="Requested products" value={String(request.items?.length ?? 0)} /><Detail label="Total quantity" value={String(requestTotalQuantity(request))} /><Detail label="Estimated request cost" value={money.format(request.amount)} /></section>
+    <section className="quotation-selection-toolbar requester-selection-toolbar"><div className="requester-selection-toolbar-top"><button className="proc-secondary" type="button" onClick={onBack}><ArrowLeft size={16} />Back to Purchase Request</button><StatusBadge>{request.status}</StatusBadge></div><div className="requester-selection-toolbar-copy"><span className="proc-eyebrow">{request.id} · Requester decision</span><h2>{request.title}</h2><p>Choose the best qualified quotation separately for each sourcing lot. A different vendor may be awarded for each category.</p></div></section>
+    <section className="quotation-request-summary"><Detail label="Department" value={request.department} /><Detail label="Requested products" value={String(request.items?.length ?? 0)} /><Detail label="Total quantity" value={String(requestTotalQuantity(request))} /><Detail label="Sourcing lots" value={String(lots.length)} /></section>
     <ProcurementValidationGuidance request={request} />
     {request.dtReviewNotes ? <section className="requester-dt-guidance"><span><UserCheck size={21} /></span><div><small>Digital Transformation Review</small><h3>Technical review completed</h3><p>{request.dtReviewNotes}</p><em>{request.dtReviewedBy ?? 'Digital Transformation Team'} · {formatMovementTime(request.dtReviewedAt)}</em></div><strong><CheckCircle2 size={16} />Reviewed</strong></section> : null}
     <RequesterQuotationSelection request={request} onRequestSaved={onRequestSaved} onComplete={onComplete} />
@@ -600,27 +686,37 @@ function RequesterQuotationSelectionPage({ request, onBack, onRequestSaved, onCo
 }
 
 function RequesterQuotationSelection({ request, onRequestSaved, onComplete }: { request: PurchaseRequest; onRequestSaved: (request: PurchaseRequest) => void; onComplete: () => void }) {
+  const lots = sourcingLots(request);
   const eligibleQuotes = (request.rfqQuotes ?? []).filter((quote) => quote.status === 'Responded');
-  const [selectedVendor, setSelectedVendor] = useState(request.vendorName ?? '');
+  const [selectedVendors, setSelectedVendors] = useState<Record<string, string>>(() => Object.fromEntries((request.sourcingAwards ?? []).map((award) => [award.category, award.vendorName])));
+  const selectedCount = lots.filter((lot) => selectedVendors[lot.category]).length;
   const selectQuotation = () => {
-    const quote = eligibleQuotes.find((item) => item.vendorName === selectedVendor);
-    if (!quote) return;
+    const awards = lots.map((lot) => {
+      const quote = eligibleQuotes.find((item) => item.vendorName === selectedVendors[lot.category] && quoteSupportsLot(request, item, lot));
+      return quote ? { category: lot.category, vendorName: quote.vendorName, vendorEmail: quote.vendorEmail, quoteReference: quote.reference } : null;
+    }).filter((award): award is SourcingAward => Boolean(award));
+    if (awards.length !== lots.length) return;
     const createdAt = new Date().toISOString();
-    onRequestSaved({ ...request, vendorName: quote.vendorName, vendorEmail: quote.vendorEmail, updatedAt: createdAt, history: [...(request.history ?? []), { action: 'select_quote', actor: request.requester, detail: `${quote.vendorName} quotation selected by requester`, createdAt }] });
+    const onlyAward = awards.length === 1 ? awards[0] : null;
+    onRequestSaved({ ...request, vendorName: onlyAward?.vendorName, vendorEmail: onlyAward?.vendorEmail, sourcingAwards: awards, updatedAt: createdAt, history: [...(request.history ?? []), { action: 'select_quote', actor: request.requester, detail: `${awards.length} vendor award${awards.length === 1 ? '' : 's'} selected across ${lots.length} sourcing lot${lots.length === 1 ? '' : 's'}`, createdAt }] });
     onComplete();
   };
   return <section className="requester-quote-selection">
-    <div className="requester-selection-heading"><span><ShoppingCart size={18} /></span><div><small>Vendor selection required</small><h4>Choose a vendor quotation</h4><p>Compare every quoted item, commercial term, and total before selecting one vendor for this request.</p></div><strong>{eligibleQuotes.length} qualified</strong></div>
-    <div className="requester-quote-grid">{eligibleQuotes.map((quote, index) => {
-      const selected = selectedVendor === quote.vendorName;
-      return <article className={`requester-quote-card ${selected ? 'selected' : ''}`} key={quote.vendorName}>
-        <button type="button" className="requester-quote-choice" onClick={() => setSelectedVendor(selected ? '' : quote.vendorName)} aria-pressed={selected}>
+    <div className="requester-selection-heading"><span><ShoppingCart size={18} /></span><div><small>Vendor awards required</small><h4>Choose a quotation for every sourcing lot</h4><p>Each category is evaluated independently and may produce its own Purchase Order.</p></div><strong>{selectedCount} of {lots.length} selected</strong></div>
+    {lots.map((lot, lotIndex) => {
+      const lotQuotes = eligibleQuotes.filter((quote) => quoteSupportsLot(request, quote, lot));
+      return <section className="requester-lot-section" key={lot.category} data-testid="requester-sourcing-lot">
+        <header className="requester-lot-heading"><span>{String(lotIndex + 1).padStart(2, '0')}</span><div><small>Sourcing lot</small><h3>{lot.category}</h3><p>{lot.items.length} product {lot.items.length === 1 ? 'line' : 'lines'} · {lotQuotes.length} qualified quotations</p></div><strong>{selectedVendors[lot.category] ? <><CheckCircle2 size={15} />Vendor selected</> : 'Selection required'}</strong></header>
+        <div className="requester-quote-grid">{lotQuotes.map((quote, index) => {
+      const selected = selectedVendors[lot.category] === quote.vendorName;
+      return <article className={`requester-quote-card ${selected ? 'selected' : ''}`} key={`${lot.category}-${quote.vendorName}`}>
+        <button type="button" className="requester-quote-choice" onClick={() => setSelectedVendors((current) => ({ ...current, [lot.category]: selected ? '' : quote.vendorName }))} aria-pressed={selected}>
           <span><small className="requester-vendor-index">Vendor {index + 1}</small><b>{quote.vendorName}</b><small>{quote.reference || 'No vendor reference'} · {quote.attachmentName || 'No attachment'}</small></span>
-          <strong>{money.format(rfqQuoteTotal(request, quote))}</strong>
+          <strong>{money.format(lotQuoteTotal(lot, quote))}</strong>
           <em>{selected ? <CheckCircle2 size={16} /> : <Circle size={16} />}{selected ? 'Selected' : 'Choose vendor'}</em>
         </button>
         <div className="requester-quote-line-head"><span>Requested item</span><span>Description / Specifications</span><span>Quantity</span><span>Unit price</span><span>Line total</span></div>
-        <div className="requester-quote-lines">{(request.items ?? []).map((item) => {
+        <div className="requester-quote-lines">{lot.items.map((item) => {
           const quotedItem = quote.items.find((line) => line.name === item.name);
           const unitPrice = quotedItem?.unitPrice ?? 0;
           return <div className="requester-quote-line" key={item.name}>
@@ -633,8 +729,10 @@ function RequesterQuotationSelection({ request, onRequestSaved, onComplete }: { 
         })}</div>
         <footer className="requester-quote-terms"><span><small>Delivery</small><b>{quote.deliveryDays} days</b></span><span><small>Payment terms</small><b>{quote.terms}</b></span><span><small>Warranty</small><b>{quote.warranty}</b></span><span><small>Valid until</small><b>{quote.validUntil}</b></span></footer>
       </article>;
-    })}</div>
-    {eligibleQuotes.length ? <div className="action-row"><button className="proc-primary" type="button" disabled={!selectedVendor} onClick={selectQuotation}><Check size={16} />Confirm selected vendor</button></div> : <div className="table-empty">No qualified vendor quotations are available for selection.</div>}
+    })}</div>{!lotQuotes.length ? <div className="table-empty">No complete quotations are available for this sourcing lot.</div> : null}
+      </section>;
+    })}
+    {eligibleQuotes.length ? <div className="requester-award-footer"><span><b>{selectedCount} of {lots.length} lots ready</b><small>Confirming creates one awarded record per category for Procurement.</small></span><button className="proc-primary" type="button" disabled={selectedCount !== lots.length} onClick={selectQuotation}><Check size={16} />Confirm {lots.length === 1 ? 'selected vendor' : 'vendor awards'}</button></div> : <div className="table-empty">No qualified vendor quotations are available for selection.</div>}
   </section>;
 }
 
@@ -643,7 +741,7 @@ function ApprovalsQueueView(props: { requests: PurchaseRequest[]; role: Role; on
   const [selectedId, setSelectedId] = useState(eligible[0]?.id ?? '');
   const selected = eligible.find((item) => item.id === selectedId) ?? eligible[0];
   if (!selected) return <EmptyWorkflow title="Approval Queue" detail="There are no Purchase Requests or Purchase Orders waiting for your approval." />;
-  return <div className="proc-page"><PageHeading eyebrow={`${props.role} workspace`} title="Approval Queue" detail="Review assigned Purchase Request and Purchase Order decisions, routing, and supporting information." /><div className="approval-layout"><section className="proc-card queue-card"><CardHeader title={`Waiting for review (${eligible.length})`} icon={Inbox} />{eligible.map((item) => { const poApproval = isPurchaseOrderApprovalStatus(item.status); return <button type="button" className={`queue-item ${selected.id === item.id ? 'selected' : ''}`} key={item.id} onClick={() => setSelectedId(item.id)}><span className="queue-badge">{poApproval ? 'PO' : item.requester.split(' ').map((part) => part[0]).join('').slice(0,2)}</span><span><b>{item.title}</b><small>{poApproval ? item.id.replace('PR-', 'PO-') : item.id} · {item.status}</small></span><strong>{poApproval ? purchaseOrderTotalLabel(item) : money.format(item.amount)}</strong></button>; })}</section><RoutingApprovalDetail request={selected} onApprove={props.onApprove} onNotify={props.onNotify} onOpenDtReview={() => props.onNavigate(`/approvals/${encodeURIComponent(selected.id)}/quotation-review`)} /></div></div>;
+  return <div className="proc-page"><PageHeading eyebrow={`${props.role} workspace`} title="Approval Queue" detail="Review assigned Purchase Request and Purchase Order decisions, routing, and supporting information." /><div className="approval-layout"><section className="proc-card queue-card"><CardHeader title={`Waiting for review (${eligible.length})`} icon={Inbox} />{eligible.map((item) => { const poApproval = isPurchaseOrderApprovalStatus(item.status); return <button type="button" className={`queue-item ${selected.id === item.id ? 'selected' : ''}`} key={item.id} onClick={() => setSelectedId(item.id)}><span className="queue-badge">{poApproval ? 'PO' : item.requester.split(' ').map((part) => part[0]).join('').slice(0,2)}</span><span><b>{item.title}</b><small>{poApproval ? purchaseOrderNumber(item) : item.id} · {item.status}</small></span><strong>{poApproval ? purchaseOrderTotalLabel(item) : money.format(item.amount)}</strong></button>; })}</section><RoutingApprovalDetail request={selected} onApprove={props.onApprove} onNotify={props.onNotify} onOpenDtReview={() => props.onNavigate(`/approvals/${encodeURIComponent(selected.id)}/quotation-review`)} /></div></div>;
 }
 
 function RoutingApprovalDetail({ request, onApprove, onNotify, onOpenDtReview }: { request: PurchaseRequest; onApprove: (id: string) => void; onNotify: (message: string) => void; onOpenDtReview: () => void }) {
@@ -655,7 +753,7 @@ function RoutingApprovalDetail({ request, onApprove, onNotify, onOpenDtReview }:
   const poTotal = isPoApproval ? purchaseOrderTotal(request) : null;
   const approvalAmount = isPoApproval ? poTotal : request.amount;
   const approvalAmountAvailable = approvalAmount !== null;
-  const documentId = isPoApproval ? request.id.replace('PR-', 'PO-') : request.id;
+  const documentId = isPoApproval ? purchaseOrderNumber(request) : request.id;
   const technologyItems = request.items?.filter((item) => item.category === 'Technology') ?? [];
   const vendorQuotes = (request.rfqQuotes ?? []).filter((quote) => quote.status === 'Responded');
   const team = isDt ? 'Digital Transformation Team' : isDepartment ? 'Department Head' : isCoo ? 'Chief Operating Officer' : isPresident ? 'President' : 'Finance';
@@ -709,24 +807,27 @@ function MultiSourcingView({ requests, onAction, onVendorSaved, onNotify }: { re
     return matchesQuery && matchesStatus;
   });
   const selected = filtered.find((item) => item.id === selectedId);
-  if (selected) return <SourcingWorkflowView request={selected} onBack={() => setSelectedId('')} onAction={onAction} onRequestSaved={onVendorSaved} onNotify={onNotify} />;
+  if (selected) return <SourcingWorkflowView request={selected} onBack={() => { setSelectedId(''); window.scrollTo({ top: 0 }); }} onAction={onAction} onRequestSaved={onVendorSaved} onNotify={onNotify} />;
   if (!requests.length) return <EmptyWorkflow title="RFQ & Vendor Sourcing" detail="A submitted Purchase Request will appear after Procurement Review." />;
-  return <div className="proc-page"><PageHeading eyebrow="Vendor sourcing" title="All RFQs" detail="Invite qualified vendors, record quotations, route technical items for review, and prepare the requester’s selection." /><section className="proc-filterbar"><div className="proc-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search RFQ number, request, or vendor" /></div><button className={`filter-chip ${status === 'all' ? 'active' : ''}`} onClick={() => setStatus('all')}>All</button><button className={`filter-chip ${status === 'draft' ? 'active' : ''}`} onClick={() => setStatus('draft')}>Sourcing</button><button className={`filter-chip ${status === 'sent' ? 'active' : ''}`} onClick={() => setStatus('sent')}>Awaiting replies</button><button className={`filter-chip ${status === 'quotes' ? 'active' : ''}`} onClick={() => setStatus('quotes')}>Quotes received</button><button className={`filter-chip ${status === 'selection' ? 'active' : ''}`} onClick={() => setStatus('selection')}>Ready for PO</button></section><section className="proc-card rfq-list-card"><CardHeader title={`Sourcing records (${filtered.length})`} icon={FileText} />{filtered.map((request) => <button type="button" className="rfq-list-row" key={request.id} onClick={() => setSelectedId(request.id)}><span className="rfq-list-icon"><FileText size={18} /></span><span><b>{request.status === 'For Procurement Review' ? request.id : request.id.replace('PR-', 'RFQ-')}</b><small>{request.title} · Source {request.id}</small></span><span><StatusBadge>{request.status}</StatusBadge><small>{request.rfqQuotes?.length ? `${request.rfqQuotes.length} vendors` : 'Vendor sourcing not started'}</small></span><strong>{money.format(request.amount)}</strong><ArrowRight className="rfq-row-chevron" size={18} /></button>)}{!filtered.length ? <div className="table-empty">No sourcing records match the current filters.</div> : null}</section></div>;
+  return <div className="proc-page"><PageHeading eyebrow="Vendor sourcing" title="All RFQs" detail="Invite qualified vendors, record quotations, route technical items for review, and prepare the requester’s selection." /><section className="proc-filterbar"><div className="proc-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search RFQ number, request, or vendor" /></div><button className={`filter-chip ${status === 'all' ? 'active' : ''}`} onClick={() => setStatus('all')}>All</button><button className={`filter-chip ${status === 'draft' ? 'active' : ''}`} onClick={() => setStatus('draft')}>Sourcing</button><button className={`filter-chip ${status === 'sent' ? 'active' : ''}`} onClick={() => setStatus('sent')}>Awaiting replies</button><button className={`filter-chip ${status === 'quotes' ? 'active' : ''}`} onClick={() => setStatus('quotes')}>Quotes received</button><button className={`filter-chip ${status === 'selection' ? 'active' : ''}`} onClick={() => setStatus('selection')}>Ready for PO</button></section><section className="proc-card rfq-list-card"><CardHeader title={`Sourcing records (${filtered.length})`} icon={FileText} />{filtered.map((request) => <button type="button" className="rfq-list-row" key={request.id} onClick={() => { setSelectedId(request.id); window.scrollTo({ top: 0 }); }}><span className="rfq-list-icon"><FileText size={18} /></span><span><b>{request.status === 'For Procurement Review' ? request.id : request.id.replace('PR-', 'RFQ-')}</b><small>{request.title} · Source {request.id}</small></span><span><StatusBadge>{request.status}</StatusBadge><small>{sourcingLots(request).length} sourcing lot{sourcingLots(request).length === 1 ? '' : 's'} · {request.rfqQuotes?.length ?? 0} vendors</small></span><strong>{money.format(request.amount)}</strong><ArrowRight className="rfq-row-chevron" size={18} /></button>)}{!filtered.length ? <div className="table-empty">No sourcing records match the current filters.</div> : null}</section></div>;
 }
 
 function SourcingWorkflowView({ request, onBack, onAction, onRequestSaved, onNotify }: { request: PurchaseRequest; onBack: () => void; onAction: (id: string, action: string) => void; onRequestSaved: (request: PurchaseRequest) => void; onNotify: (message: string) => void }) {
+  const lots = sourcingLots(request);
+  const [activeLotCategory, setActiveLotCategory] = useState(lots[0]?.category ?? request.category);
+  const activeLot = lots.find((lot) => lot.category === activeLotCategory) ?? lots[0] ?? { category: request.category, items: request.items ?? [] };
   const [vendorRecords, setVendorRecords] = useState<VendorRecord[]>(loadVendorRecords);
   const [vendorToAdd, setVendorToAdd] = useState('');
   const [addingVendor, setAddingVendor] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [validationNotes, setValidationNotes] = useState(request.procurementValidationNotes ?? '');
-  const createQuote = (vendor: VendorRecord): RfqVendorQuote => ({ vendorName: vendor.name, vendorEmail: vendor.email, status: 'Draft', reference: '', deliveryDays: Number.parseInt(vendor.lead, 10) || 7, terms: vendor.terms, warranty: '1 year standard warranty', validUntil: '2026-09-30', items: (request.items ?? []).map((item) => ({ name: item.name, unitPrice: item.unitPrice })) });
+  const createQuote = (vendor: VendorRecord, lot = activeLot): RfqVendorQuote => ({ vendorName: vendor.name, vendorEmail: vendor.email, status: 'Draft', reference: '', deliveryDays: Number.parseInt(vendor.lead, 10) || 7, terms: vendor.terms, warranty: '1 year standard warranty', validUntil: '2026-09-30', lotCategories: lot ? [lot.category] : requestCategories(request), items: (lot?.items ?? request.items ?? []).map((item) => ({ name: item.name, unitPrice: item.unitPrice })) });
   const initialQuotes = () => {
     if (request.status === 'RFQ Draft') {
       const shortlistWasEdited = request.history?.some((item) => ['add_qualified_vendor','remove_qualified_vendor','add_new_shortlist_vendor'].includes(item.action));
       return shortlistWasEdited ? request.rfqQuotes ?? [] : [];
     }
-    return request.rfqQuotes?.length ? request.rfqQuotes : request.status === 'RFQ Sent' ? vendorRecords.slice(0, 3).map((vendor) => ({ ...createQuote(vendor), status: 'Sent' as const })) : [];
+    return request.rfqQuotes?.length ? request.rfqQuotes : request.status === 'RFQ Sent' ? vendorRecords.slice(0, 3).map((vendor) => ({ ...createQuote(vendor, { category: request.category, items: request.items ?? [] }), lotCategories: requestCategories(request), status: 'Sent' as const })) : [];
   };
   const [quotes, setQuotes] = useState<RfqVendorQuote[]>(initialQuotes);
   useEffect(() => setQuotes(initialQuotes()), [request.id, request.rfqQuotes, request.status]);
@@ -736,7 +837,12 @@ function SourcingWorkflowView({ request, onBack, onAction, onRequestSaved, onNot
   const quotationsReceived = request.status === 'Quotations Received';
   const readyForPo = request.status === 'Ready for PO Creation';
   const respondedQuotes = quotes.filter((quote) => quote.status === 'Responded');
-  const availableVendors = vendorRecords.filter((vendor) => !quotes.some((quote) => quote.vendorName === vendor.name));
+  const activeLotQuotes = activeLot ? quotes.filter((quote) => quoteLotCategories(request, quote).includes(activeLot.category)) : [];
+  const activeRespondedQuotes = activeLotQuotes.filter((quote) => quote.status === 'Responded' && activeLot && quoteSupportsLot(request, quote, activeLot));
+  const availableVendors = vendorRecords.filter((vendor) => !activeLotQuotes.some((quote) => quote.vendorName === vendor.name));
+  const allLotsShortlisted = lots.every((lot) => quotes.filter((quote) => quote.status !== 'Withdrawn' && quoteLotCategories(request, quote).includes(lot.category)).length >= 2);
+  const allLotsResponded = lots.every((lot) => quotes.filter((quote) => quote.status === 'Responded' && quoteSupportsLot(request, quote, lot)).length >= 2);
+  const allLotsAwarded = lots.every((lot) => request.sourcingAwards?.some((award) => award.category === lot.category));
   const updateQuote = (vendorName: string, changes: Partial<RfqVendorQuote>) => setQuotes((current) => current.map((quote) => quote.vendorName === vendorName ? { ...quote, ...changes } : quote));
   const updateQuotedItem = (vendorName: string, itemName: string, unitPrice: number) => setQuotes((current) => current.map((quote) => quote.vendorName === vendorName ? { ...quote, items: quote.items.map((item) => item.name === itemName ? { ...item, unitPrice } : item) } : quote));
   const saveQuotes = (nextQuotes: RfqVendorQuote[], action: string, detail: string) => {
@@ -744,11 +850,20 @@ function SourcingWorkflowView({ request, onBack, onAction, onRequestSaved, onNot
     onRequestSaved({ ...request, rfqQuotes: nextQuotes, updatedAt: createdAt, history: [...(request.history ?? []), { action, actor: 'procurement@life.edu.ph', detail, createdAt }] });
   };
   const toggleVendor = (vendor: VendorRecord) => {
-    const included = quotes.some((quote) => quote.vendorName === vendor.name);
-    const nextQuotes = included ? quotes.filter((quote) => quote.vendorName !== vendor.name) : [...quotes, createQuote(vendor)];
+    if (!activeLot) return;
+    const existing = quotes.find((quote) => quote.vendorName === vendor.name);
+    const included = Boolean(existing && quoteLotCategories(request, existing).includes(activeLot.category));
+    let nextQuotes: RfqVendorQuote[];
+    if (!existing) nextQuotes = [...quotes, createQuote(vendor, activeLot)];
+    else if (included) {
+      const remainingCategories = quoteLotCategories(request, existing).filter((category) => category !== activeLot.category);
+      nextQuotes = remainingCategories.length ? quotes.map((quote) => quote.vendorName === vendor.name ? { ...quote, lotCategories: remainingCategories, items: quote.items.filter((item) => !activeLot.items.some((product) => product.name === item.name)) } : quote) : quotes.filter((quote) => quote.vendorName !== vendor.name);
+    } else {
+      nextQuotes = quotes.map((quote) => quote.vendorName === vendor.name ? { ...quote, lotCategories: [...quoteLotCategories(request, quote), activeLot.category], items: [...quote.items, ...activeLot.items.filter((product) => !quote.items.some((item) => item.name === product.name)).map((product) => ({ name: product.name, unitPrice: product.unitPrice }))] } : quote);
+    }
     setQuotes(nextQuotes);
-    saveQuotes(nextQuotes, included ? 'remove_qualified_vendor' : 'add_qualified_vendor', `${vendor.name} ${included ? 'removed from' : 'added to'} the qualified vendor shortlist`);
-    onNotify(`${vendor.name} ${included ? 'removed from' : 'added to'} the shortlist`);
+    saveQuotes(nextQuotes, included ? 'remove_qualified_vendor' : 'add_qualified_vendor', `${vendor.name} ${included ? 'removed from' : 'added to'} the ${activeLot.category} shortlist`);
+    onNotify(`${vendor.name} ${included ? 'removed from' : 'added to'} the ${activeLot.category} lot`);
   };
   const addSelectedVendor = () => {
     const vendor = availableVendors.find((item) => item.name === vendorToAdd);
@@ -769,28 +884,35 @@ function SourcingWorkflowView({ request, onBack, onAction, onRequestSaved, onNot
   const addVendorAfterSend = () => {
     const vendor = availableVendors.find((item) => item.name === vendorToAdd);
     if (!vendor) return;
-    const nextQuote = { ...createQuote(vendor), status: 'Sent' as const };
-    const nextQuotes = [...quotes, nextQuote];
+    const existing = quotes.find((quote) => quote.vendorName === vendor.name);
+    const nextQuote = { ...createQuote(vendor, activeLot), status: 'Sent' as const };
+    const nextQuotes = existing ? quotes.map((quote) => quote.vendorName === vendor.name ? { ...quote, status: 'Sent' as const, lotCategories: [...new Set([...quoteLotCategories(request, quote), activeLot.category])], items: [...quote.items, ...activeLot.items.filter((product) => !quote.items.some((item) => item.name === product.name)).map((product) => ({ name: product.name, unitPrice: product.unitPrice }))] } : quote) : [...quotes, nextQuote];
     setQuotes(nextQuotes);
     setVendorToAdd('');
     saveQuotes(nextQuotes, 'add_rfq_vendor', `${vendor.name} added after initial RFQ release and sent an invitation`);
     onNotify(`RFQ invitation sent to ${vendor.name}`);
   };
   const withdrawVendor = (vendorName: string) => {
-    const nextQuotes = quotes.map((quote) => quote.vendorName === vendorName ? { ...quote, status: 'Withdrawn' as const } : quote);
+    if (!activeLot) return;
+    const nextQuotes = quotes.map((quote) => {
+      if (quote.vendorName !== vendorName) return quote;
+      const remainingCategories = quoteLotCategories(request, quote).filter((category) => category !== activeLot.category);
+      return remainingCategories.length ? { ...quote, lotCategories: remainingCategories, items: quote.items.filter((item) => !activeLot.items.some((product) => product.name === item.name)) } : { ...quote, status: 'Withdrawn' as const };
+    });
     setQuotes(nextQuotes);
     saveQuotes(nextQuotes, 'withdraw_rfq_vendor', `${vendorName} RFQ invitation withdrawn; prior activity retained`);
     onNotify(`${vendorName} invitation withdrawn`);
   };
   const inviteVendors = () => {
-    if (quotes.length < 2) return;
+    if (!allLotsShortlisted) return;
     const sentQuotes = quotes.map((quote) => ({ ...quote, status: 'Sent' as const }));
     setQuotes(sentQuotes);
-    saveQuotes(sentQuotes, 'send_rfq', `RFQ sent to ${sentQuotes.length} qualified vendors`);
+    saveQuotes(sentQuotes, 'send_rfq', `RFQs sent for ${lots.length} category sourcing lot${lots.length === 1 ? '' : 's'}`);
     onAction(request.id, 'send_rfq');
   };
   const closeQuotations = () => {
-    saveQuotes(quotes, 'record_quotations', `${respondedQuotes.length} vendor quotations recorded and sourcing closed`);
+    if (!allLotsResponded) return;
+    saveQuotes(quotes, 'record_quotations', `${respondedQuotes.length} vendor quotations recorded across ${lots.length} sourcing lot${lots.length === 1 ? '' : 's'}`);
     onAction(request.id, 'record_quotations');
   };
   const submitQuotations = () => {
@@ -801,17 +923,18 @@ function SourcingWorkflowView({ request, onBack, onAction, onRequestSaved, onNot
   };
   if (request.status === 'For Procurement Review') return <ProcurementReview request={request} onBack={onBack} onComplete={() => onAction(request.id, 'complete_review')} onNotify={onNotify} />;
   return <div className="proc-page sourcing-workflow-page">
-    <section className="rfq-commandbar"><div className="rfq-actions"><button className="proc-secondary" type="button" onClick={onBack}><ArrowLeft size={16} />Back to sourcing</button><button className="proc-secondary" type="button" onClick={() => setPreviewOpen(true)}><Eye size={16} />Preview vendor form</button>{draft ? <button className="proc-primary" type="button" disabled={quotes.length < 2} onClick={inviteVendors}><Send size={16} />Send RFQ to {quotes.length} vendors</button> : null}{sent ? <button className="proc-primary" type="button" disabled={respondedQuotes.length < 2} onClick={closeQuotations}><Check size={16} />Close RFQ and record quotations</button> : null}{quotationsReceived ? <button className="proc-primary" type="button" onClick={submitQuotations}><ArrowRight size={16} />Submit quotations for review</button> : null}{readyForPo ? <button className="proc-primary" type="button" disabled={!request.vendorName} onClick={() => onAction(request.id, 'create_po')}><ShoppingCart size={16} />Create PO from requester selection</button> : null}</div><div className="rfq-status-track"><span className={draft ? 'active' : 'done'}>Vendor sourcing</span><span className={sent ? 'active' : ['Quotations Received','For DT Approval','For Requester Selection','Ready for PO Creation'].includes(request.status) ? 'done' : ''}>RFQs sent</span><span className={quotationsReceived ? 'active' : ['For DT Approval','For Requester Selection','Ready for PO Creation'].includes(request.status) ? 'done' : ''}>Quotations received</span><span className={readyForPo ? 'active' : ''}>Requester selection</span></div></section>
+    <section className="rfq-commandbar"><div className="rfq-actions"><button className="proc-secondary" type="button" onClick={onBack}><ArrowLeft size={16} />Back to sourcing</button><button className="proc-secondary" type="button" onClick={() => setPreviewOpen(true)}><Eye size={16} />Preview {activeLot.category} form</button>{draft ? <button className="proc-primary" type="button" disabled={!allLotsShortlisted} onClick={inviteVendors}><Send size={16} />Send all category RFQs</button> : null}{sent ? <button className="proc-primary" type="button" disabled={!allLotsResponded} onClick={closeQuotations}><Check size={16} />Close all RFQs</button> : null}{quotationsReceived ? <button className="proc-primary" type="button" onClick={submitQuotations}><ArrowRight size={16} />Submit quotations for review</button> : null}{readyForPo ? <button className="proc-primary" type="button" disabled={!allLotsAwarded} onClick={() => onAction(request.id, 'create_po')}><ShoppingCart size={16} />Create {lots.length} {lots.length === 1 ? 'PO' : 'POs'}</button> : null}</div><div className="rfq-status-track"><span className={draft ? 'active' : 'done'}>Vendor sourcing</span><span className={sent ? 'active' : ['Quotations Received','For DT Approval','For Requester Selection','Ready for PO Creation'].includes(request.status) ? 'done' : ''}>RFQs sent</span><span className={quotationsReceived ? 'active' : ['For DT Approval','For Requester Selection','Ready for PO Creation'].includes(request.status) ? 'done' : ''}>Quotations received</span><span className={readyForPo ? 'active' : ''}>Requester selection</span></div></section>
     <section className="proc-card sourcing-record-header"><div><span className="proc-eyebrow">{request.id.replace('PR-', 'RFQ-')} · Source {request.id}</span><h2>{request.title}</h2><p>{request.department} · Requested by {request.requester}</p></div><div><StatusBadge>{request.status}</StatusBadge><strong>{money.format(request.amount)} estimated</strong></div></section>
-    <section className="proc-card locked-pr-products"><div className="movement-history-title"><strong>Purchase Request products</strong><span>Locked source lines</span></div>{request.items?.map((item, index) => <div key={`${item.name}-${index}`}><span><b>{item.name}</b><small>{item.category} · {itemUom(item)}</small><em>{itemDescription(item)}</em></span><span>{item.quantity} {itemUom(item)}</span><span>{money.format(item.unitPrice)} estimated</span><strong>{money.format(item.quantity * item.unitPrice)}</strong></div>)}</section>
-    {draft ? <section className="proc-card vendor-sourcing-selector"><div className="movement-history-title"><strong>Qualified vendor shortlist</strong><span>{quotes.length} selected · Minimum 2</span></div><div className="vendor-shortlist-controls"><label><span>Select an existing vendor</span><select value={vendorToAdd} onChange={(event) => setVendorToAdd(event.target.value)} disabled={!availableVendors.length}><option value="">{availableVendors.length ? 'Choose a vendor from the directory' : 'All directory vendors are selected'}</option>{availableVendors.map((vendor) => <option value={vendor.name} key={vendor.name}>{vendor.name} · {vendor.email}</option>)}</select></label><button type="button" className="proc-primary" disabled={!vendorToAdd} onClick={addSelectedVendor}><Plus size={15} />Add to shortlist</button><button type="button" className="proc-secondary" onClick={() => setAddingVendor(true)}><Store size={15} />Add new vendor</button></div>{quotes.length ? <div className="vendor-sourcing-grid">{quotes.map((quote) => { const vendor = vendorRecords.find((item) => item.name === quote.vendorName) ?? { name: quote.vendorName, email: quote.vendorEmail, terms: quote.terms, lead: `${quote.deliveryDays} days`, rating: 'New' }; return <article className="selected" key={vendor.name}><span className="vendor-shortlist-icon"><Store size={17} /></span><span><b>{vendor.name}</b><small>{vendor.email}</small><small>{vendor.terms} · Lead time {vendor.lead}</small></span><button type="button" className="remove" onClick={() => toggleVendor(vendor)}><Trash2 size={14} />Remove</button></article>; })}</div> : <div className="vendor-shortlist-empty"><Store size={24} /><div><b>No vendors selected</b><p>Choose an existing vendor above or add a new vendor to begin the shortlist.</p></div></div>}{quotes.length > 0 && quotes.length < 2 ? <p className="vendor-shortlist-requirement"><AlertTriangle size={15} />Add {2 - quotes.length} more vendor before sending this RFQ.</p> : null}</section> : null}
-    {sent ? <section className="proc-card rfq-vendor-management"><div className="movement-history-title"><strong>Qualified vendor invitations</strong><span>{quotes.filter((quote) => quote.status !== 'Withdrawn').length} active · {quotes.filter((quote) => quote.status === 'Withdrawn').length} withdrawn</span></div><div className="rfq-add-vendor"><label><span>Add another qualified vendor</span><select value={vendorToAdd} onChange={(event) => setVendorToAdd(event.target.value)} disabled={!availableVendors.length}><option value="">{availableVendors.length ? 'Select a vendor' : 'All directory vendors are included'}</option>{availableVendors.map((vendor) => <option value={vendor.name} key={vendor.name}>{vendor.name} · {vendor.email}</option>)}</select></label><button type="button" className="proc-primary" disabled={!vendorToAdd} onClick={addVendorAfterSend}><Send size={15} />Add and send RFQ</button></div><p>Adding a vendor sends the current RFQ immediately. Withdrawing keeps the invitation and activity history in the record.</p></section> : null}
-    {!draft ? <section className="vendor-quotation-workspace"><div className="movement-history-title"><strong>Vendor quotations</strong><span>{respondedQuotes.length} of {quotes.filter((quote) => quote.status !== 'Withdrawn').length} active vendors responded</span></div>{quotes.map((quote) => { const withdrawn = quote.status === 'Withdrawn'; const editable = sent && !withdrawn && quote.status !== 'Declined'; return <article className={`proc-card vendor-quotation-entry ${quote.status === 'Responded' ? 'responded' : ''} ${withdrawn ? 'withdrawn' : ''}`} key={quote.vendorName}><header><div><b>{quote.vendorName}</b><small>{quote.vendorEmail}</small></div><div className="vendor-quotation-status"><select disabled={!editable} value={quote.status} onChange={(event) => updateQuote(quote.vendorName, { status: event.target.value as RfqVendorQuote['status'] })}><option>Sent</option><option>Viewed</option><option>Responded</option><option>Declined</option><option>Overdue</option>{withdrawn ? <option>Withdrawn</option> : null}</select>{sent && !['Responded','Declined','Withdrawn'].includes(quote.status) ? <button type="button" onClick={() => withdrawVendor(quote.vendorName)}><X size={14} />Withdraw invitation</button> : null}</div></header><div className="vendor-quote-fields"><label><span>Quotation reference</span><input disabled={!editable} value={quote.reference} onChange={(event) => updateQuote(quote.vendorName, { reference: event.target.value })} /></label><label><span>Delivery days</span><input disabled={!editable} type="number" min="1" value={quote.deliveryDays} onChange={(event) => updateQuote(quote.vendorName, { deliveryDays: Number(event.target.value) })} /></label><label><span>Payment terms</span><input disabled={!editable} value={quote.terms} onChange={(event) => updateQuote(quote.vendorName, { terms: event.target.value })} /></label><label><span>Warranty</span><input disabled={!editable} value={quote.warranty} onChange={(event) => updateQuote(quote.vendorName, { warranty: event.target.value })} /></label><label><span>Valid until</span><input disabled={!editable} type="date" value={quote.validUntil} onChange={(event) => updateQuote(quote.vendorName, { validUntil: event.target.value })} /></label><label><span>Quotation attachment</span><input disabled={!editable} type="file" onChange={(event) => updateQuote(quote.vendorName, { attachmentName: event.target.files?.[0]?.name })} /><small>{quote.attachmentName || 'No file attached'}</small></label></div><div className="vendor-quoted-lines">{(request.items ?? []).map((item) => <label key={item.name}><span><b>{item.name}</b><small>{item.quantity} {itemUom(item)} · {item.category}</small><small>{itemDescription(item)}</small></span><input disabled={!editable || quote.status !== 'Responded'} type="number" min="0" value={quote.items.find((quotedItem) => quotedItem.name === item.name)?.unitPrice ?? 0} onChange={(event) => updateQuotedItem(quote.vendorName, item.name, Number(event.target.value))} /><strong>{money.format(item.quantity * (quote.items.find((quotedItem) => quotedItem.name === item.name)?.unitPrice ?? 0))}</strong></label>)}</div><footer><span>{withdrawn ? 'Invitation withdrawn' : 'Quoted total'}</span><strong>{withdrawn ? 'Excluded' : money.format(rfqQuoteTotal(request, quote))}</strong></footer></article>; })}</section> : null}
-    {(quotationsReceived || readyForPo) && respondedQuotes.length ? <section className="proc-card quotation-comparison-summary"><div className="movement-history-title"><strong>Quotation comparison</strong><span>Procurement validation only</span></div><div className="quotation-summary-head"><span>Vendor</span><span>Total</span><span>Delivery</span><span>Terms</span><span>Eligibility</span></div>{respondedQuotes.map((quote) => <div className="quotation-summary-row" key={quote.vendorName}><span><b>{quote.vendorName}</b><small>{quote.reference || 'No reference'} · {quote.attachmentName || 'No attachment'}</small></span><strong>{money.format(rfqQuoteTotal(request, quote))}</strong><span>{quote.deliveryDays} days</span><span>{quote.terms}<small>{quote.warranty}</small></span><em>{quote.reference && quote.attachmentName ? 'Complete' : 'Qualified · details pending'}</em></div>)}</section> : null}
+    <section className="proc-card sourcing-lot-switcher"><div className="movement-history-title"><strong>Sourcing lots</strong><span>{lots.length} categor{lots.length === 1 ? 'y' : 'ies'} · managed independently</span></div><div className="sourcing-lot-tabs" role="tablist">{lots.map((lot, index) => { const vendorCount = quotes.filter((quote) => quote.status !== 'Withdrawn' && quoteLotCategories(request, quote).includes(lot.category)).length; const award = request.sourcingAwards?.find((item) => item.category === lot.category); return <button type="button" role="tab" aria-selected={activeLot.category === lot.category} className={activeLot.category === lot.category ? 'active' : ''} onClick={() => { setActiveLotCategory(lot.category); setVendorToAdd(''); }} key={lot.category}><span>{index + 1}</span><b>{lot.category}</b><small>{lot.items.length} items · {award ? `Awarded to ${award.vendorName}` : `${vendorCount} vendors`}</small></button>; })}</div></section>
+    <section className="proc-card locked-pr-products"><div className="movement-history-title"><strong>{activeLot.category} products</strong><span>Locked sourcing lot · {activeLot.items.length} lines</span></div>{activeLot.items.map((item, index) => <div key={`${item.name}-${index}`}><span><b>{item.name}</b><small>{item.category} · {itemUom(item)}</small><em>{itemDescription(item)}</em></span><span>{item.quantity} {itemUom(item)}</span><span>{money.format(item.unitPrice)} estimated</span><strong>{money.format(item.quantity * item.unitPrice)}</strong></div>)}</section>
+    {draft ? <section className="proc-card vendor-sourcing-selector"><div className="movement-history-title"><strong>{activeLot.category} vendor shortlist</strong><span>{activeLotQuotes.length} selected · Minimum 2 for this lot</span></div><div className="vendor-shortlist-controls"><label><span>Select an existing vendor</span><select value={vendorToAdd} onChange={(event) => setVendorToAdd(event.target.value)} disabled={!availableVendors.length}><option value="">{availableVendors.length ? `Choose a ${activeLot.category} vendor` : 'All directory vendors are selected for this lot'}</option>{availableVendors.map((vendor) => <option value={vendor.name} key={vendor.name}>{vendor.name} · {vendor.email}</option>)}</select></label><button type="button" className="proc-primary" disabled={!vendorToAdd} onClick={addSelectedVendor}><Plus size={15} />Add to this lot</button><button type="button" className="proc-secondary" onClick={() => setAddingVendor(true)}><Store size={15} />Add new vendor</button></div>{activeLotQuotes.length ? <div className="vendor-sourcing-grid">{activeLotQuotes.map((quote) => { const vendor = vendorRecords.find((item) => item.name === quote.vendorName) ?? { name: quote.vendorName, email: quote.vendorEmail, terms: quote.terms, lead: `${quote.deliveryDays} days`, rating: 'New' }; return <article className="selected" key={vendor.name}><span className="vendor-shortlist-icon"><Store size={17} /></span><span><b>{vendor.name}</b><small>{vendor.email}</small><small>{vendor.terms} · Lead time {vendor.lead}</small></span><button type="button" className="remove" onClick={() => toggleVendor(vendor)}><Trash2 size={14} />Remove</button></article>; })}</div> : <div className="vendor-shortlist-empty"><Store size={24} /><div><b>No vendors selected for {activeLot.category}</b><p>Build this lot's vendor pool independently from the other categories.</p></div></div>}{activeLotQuotes.length > 0 && activeLotQuotes.length < 2 ? <p className="vendor-shortlist-requirement"><AlertTriangle size={15} />Add {2 - activeLotQuotes.length} more vendor before this category RFQ can be sent.</p> : null}</section> : null}
+    {sent ? <section className="proc-card rfq-vendor-management"><div className="movement-history-title"><strong>{activeLot.category} vendor invitations</strong><span>{activeLotQuotes.filter((quote) => quote.status !== 'Withdrawn').length} active · managed only for this lot</span></div><div className="rfq-add-vendor"><label><span>Add another qualified vendor</span><select value={vendorToAdd} onChange={(event) => setVendorToAdd(event.target.value)} disabled={!availableVendors.length}><option value="">{availableVendors.length ? `Select a vendor for ${activeLot.category}` : 'All directory vendors are included in this lot'}</option>{availableVendors.map((vendor) => <option value={vendor.name} key={vendor.name}>{vendor.name} · {vendor.email}</option>)}</select></label><button type="button" className="proc-primary" disabled={!vendorToAdd} onClick={addVendorAfterSend}><Send size={15} />Add and send RFQ</button></div><p>Adding or withdrawing a vendor here affects only the active category lot. Other category invitations remain unchanged.</p></section> : null}
+    {!draft ? <section className="vendor-quotation-workspace"><div className="movement-history-title"><strong>{activeLot.category} vendor quotations</strong><span>{activeRespondedQuotes.length} of {activeLotQuotes.filter((quote) => quote.status !== 'Withdrawn').length} active vendors responded</span></div>{activeLotQuotes.map((quote) => { const withdrawn = quote.status === 'Withdrawn'; const editable = sent && !withdrawn && quote.status !== 'Declined'; return <article className={`proc-card vendor-quotation-entry ${quote.status === 'Responded' ? 'responded' : ''} ${withdrawn ? 'withdrawn' : ''}`} key={`${activeLot.category}-${quote.vendorName}`}><header><div><b>{quote.vendorName}</b><small>{quote.vendorEmail}</small></div><div className="vendor-quotation-status"><select disabled={!editable} value={quote.status} onChange={(event) => updateQuote(quote.vendorName, { status: event.target.value as RfqVendorQuote['status'] })}><option>Sent</option><option>Viewed</option><option>Responded</option><option>Declined</option><option>Overdue</option>{withdrawn ? <option>Withdrawn</option> : null}</select>{sent && !['Responded','Declined','Withdrawn'].includes(quote.status) ? <button type="button" onClick={() => withdrawVendor(quote.vendorName)}><X size={14} />Withdraw from this lot</button> : null}</div></header><div className="vendor-quote-fields"><label><span>Quotation reference</span><input disabled={!editable} value={quote.reference} onChange={(event) => updateQuote(quote.vendorName, { reference: event.target.value })} /></label><label><span>Delivery days</span><input disabled={!editable} type="number" min="1" value={quote.deliveryDays} onChange={(event) => updateQuote(quote.vendorName, { deliveryDays: Number(event.target.value) })} /></label><label><span>Payment terms</span><input disabled={!editable} value={quote.terms} onChange={(event) => updateQuote(quote.vendorName, { terms: event.target.value })} /></label><label><span>Warranty</span><input disabled={!editable} value={quote.warranty} onChange={(event) => updateQuote(quote.vendorName, { warranty: event.target.value })} /></label><label><span>Valid until</span><input disabled={!editable} type="date" value={quote.validUntil} onChange={(event) => updateQuote(quote.vendorName, { validUntil: event.target.value })} /></label><label><span>Quotation attachment</span><input disabled={!editable} type="file" onChange={(event) => updateQuote(quote.vendorName, { attachmentName: event.target.files?.[0]?.name })} /><small>{quote.attachmentName || 'No file attached'}</small></label></div><div className="vendor-quoted-lines">{activeLot.items.map((item) => <label key={item.name}><span><b>{item.name}</b><small>{item.quantity} {itemUom(item)} · {item.category}</small><small>{itemDescription(item)}</small></span><input disabled={!editable || quote.status !== 'Responded'} type="number" min="0" value={quote.items.find((quotedItem) => quotedItem.name === item.name)?.unitPrice ?? 0} onChange={(event) => updateQuotedItem(quote.vendorName, item.name, Number(event.target.value))} /><strong>{money.format(item.quantity * (quote.items.find((quotedItem) => quotedItem.name === item.name)?.unitPrice ?? 0))}</strong></label>)}</div><footer><span>{withdrawn ? 'Invitation withdrawn' : `${activeLot.category} quoted total`}</span><strong>{withdrawn ? 'Excluded' : money.format(lotQuoteTotal(activeLot, quote))}</strong></footer></article>; })}</section> : null}
+    {(quotationsReceived || readyForPo) && activeRespondedQuotes.length ? <section className="proc-card quotation-comparison-summary"><div className="movement-history-title"><strong>{activeLot.category} quotation comparison</strong><span>Independent category evaluation</span></div><div className="quotation-summary-head"><span>Vendor</span><span>Lot total</span><span>Delivery</span><span>Terms</span><span>Eligibility</span></div>{activeRespondedQuotes.map((quote) => <div className="quotation-summary-row" key={quote.vendorName}><span><b>{quote.vendorName}</b><small>{quote.reference || 'No reference'} · {quote.attachmentName || 'No attachment'}</small></span><strong>{money.format(lotQuoteTotal(activeLot, quote))}</strong><span>{quote.deliveryDays} days</span><span>{quote.terms}<small>{quote.warranty}</small></span><em>{quote.reference && quote.attachmentName ? 'Complete' : 'Qualified · details pending'}</em></div>)}</section> : null}
     {quotationsReceived ? <section className="proc-card quotation-validation-notes"><label className="notes-field"><span>Procurement Validation Notes</span><textarea value={validationNotes} onChange={(event) => setValidationNotes(event.target.value)} placeholder="Document missing requirements, quotation conditions, eligibility concerns, exclusions, or instructions for the next reviewer" /></label><div><ClipboardCheck size={18} /><span><b>Shared with the next reviewer</b><small>{requestIncludesTechnology(request) ? 'This note will be shown to Digital Transformation during technical review and later to the requester.' : 'This note will be shown directly to the requester before vendor selection.'}</small></span></div></section> : null}
     {quotationsReceived ? <section className="proc-card quotation-handoff-note"><CheckCircle2 size={20} /><div><b>Quotation capture complete</b><p>{requestIncludesTechnology(request) ? 'Technology products will be reviewed by Digital Transformation. Non-technology products remain visible but outside DT scope.' : 'No Technology products are present. The qualified quotations will go directly to the requester.'}</p></div></section> : null}
-    {readyForPo ? <section className="proc-card selected-quotation-summary"><CheckCircle2 size={22} /><div><span className="proc-eyebrow">Requester selection completed</span><h3>{request.vendorName}</h3><p>The requester selected this qualified quotation. Procurement may now validate the record and create the Purchase Order.</p></div><strong>{money.format(rfqQuoteTotal(request, quotes.find((quote) => quote.vendorName === request.vendorName) ?? quotes[0]))}</strong></section> : null}
-    {previewOpen ? <VendorRfqMagicLinkPreview request={request} quote={quotes.find((quote) => quote.status !== 'Withdrawn') ?? quotes[0]} onClose={() => setPreviewOpen(false)} /> : null}
+    {readyForPo ? <section className="proc-card selected-quotation-summary"><CheckCircle2 size={22} /><div><span className="proc-eyebrow">Requester selection completed</span><h3>{request.sourcingAwards?.length ?? 0} category award{request.sourcingAwards?.length === 1 ? '' : 's'}</h3><p>Each sourcing lot will become a separate Purchase Order for its selected vendor.</p></div><strong>{allLotsAwarded ? `${lots.length} ${lots.length === 1 ? 'PO' : 'POs'} ready` : 'Awards pending'}</strong></section> : null}
+    {previewOpen ? <VendorRfqMagicLinkPreview request={{ ...request, category: activeLot.category, items: activeLot.items }} quote={activeLotQuotes.find((quote) => quote.status !== 'Withdrawn') ?? activeLotQuotes[0]} onClose={() => setPreviewOpen(false)} /> : null}
     {addingVendor ? <VendorEditor initial={{ name: '', email: '', terms: '30 days', lead: '7 days', rating: 'New', vendorType: 'Company' }} onCancel={() => setAddingVendor(false)} onSave={saveAndShortlistVendor} /> : null}
   </div>;
 }
@@ -821,7 +944,8 @@ function VendorRfqMagicLinkPreview({ request, quote, onClose, initialView = 'ema
   const vendorEmail = quote?.vendorEmail ?? 'vendor@example.com';
   const [showForm, setShowForm] = useState(initialView === 'form');
   const rfqNumber = request.id.replace('PR-', 'RFQ-');
-  const magicLinkUrl = `${window.location.origin}/vendor-quotation/${encodeURIComponent(request.id)}?vendor=${encodeURIComponent(vendorEmail)}&token=prototype-secure-link`;
+  const appBase = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const magicLinkUrl = `${window.location.origin}${appBase}/vendor-quotation/${encodeURIComponent(sourcePurchaseRequestNumber(request))}?vendor=${encodeURIComponent(vendorEmail)}&lot=${encodeURIComponent(request.category)}&token=prototype-secure-link`;
   if (!showForm) return <div className="proc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="proc-modal rfq-email-preview" role="dialog" aria-modal="true" aria-labelledby="rfq-email-preview-title"><header className="vendor-preview-toolbar"><div><span className="preview-mode-badge"><Mail size={14} />Email preview</span><small>This invitation will be sent with a vendor-specific secure link.</small></div><button className="modal-close" type="button" onClick={onClose} aria-label="Close RFQ email preview"><X size={19} /></button></header><div className="email-envelope"><div className="email-envelope-row"><span>From</span><b>Life College Procurement</b><small>procurement@life.edu.ph</small></div><div className="email-envelope-row"><span>To</span><b>{vendorName}</b><small>{vendorEmail}</small></div><div className="email-envelope-row subject"><span>Subject</span><b id="rfq-email-preview-title">Invitation to Submit Quotation · {rfqNumber}</b></div></div><article className="rfq-email-body"><header><span className="email-school-name">LIFE COLLEGE, INC.</span><small>PROCUREMENT OFFICE</small></header><p>Dear {vendorName},</p><p>Life College, Inc. invites your company to submit a quotation for the purchase request below. Please review the required products and specifications, then provide your commercial offer through the secure link.</p><div className="email-rfq-summary"><div><small>RFQ reference</small><b>{rfqNumber}</b></div><div><small>Purchase requirement</small><b>{request.title}</b></div><div><small>Requesting department</small><b>{request.department}</b></div><div><small>Submit by</small><b>September 30, 2026</b></div></div><p>The form contains {request.items?.length ?? 0} product {(request.items?.length ?? 0) === 1 ? 'line' : 'lines'}, including descriptions, specifications, quantities, and units of measure.</p><div className="email-magic-link"><a className="proc-primary" href={magicLinkUrl} target="_blank" rel="noreferrer"><Link2 size={17} />Open secure quotation form</a><small>This unique link signs you in for this RFQ only. No account or password is required. It opens in a new tab.</small><code>{magicLinkUrl}</code></div><div className="email-security-note"><AlertTriangle size={17} /><span><b>Do not forward this email.</b><small>The magic link is assigned to {vendorEmail} and should not be shared.</small></span></div><p>For questions or clarifications, reply to this email or contact the Procurement Office.</p><p>Regards,<br /><b>Procurement Office</b><br />Life College, Inc.</p></article><footer className="rfq-email-footer"><span>This is a transactional procurement email generated by the Life OS prototype.</span><a className="proc-secondary" href={magicLinkUrl} target="_blank" rel="noreferrer"><Eye size={16} />Open linked form in new tab</a></footer></section></div>;
   return <VendorQuotationStepper request={request} quote={quote} vendorName={vendorName} vendorEmail={vendorEmail} standalone={standalone} onBackToEmail={() => setShowForm(false)} onClose={onClose} />;
 }
@@ -981,7 +1105,7 @@ function PurchaseOrderWorkflow() {
 }
 
 function PurchaseOrderDocument({ request, onClose }: { request: PurchaseRequest; onClose: () => void }) {
-  const poNumber = request.id.replace('PR-', 'PO-');
+  const poNumber = purchaseOrderNumber(request);
   const vendor = loadVendorRecords().find((item) => item.name === request.vendorName);
   const selectedQuote = request.rfqQuotes?.find((quote) => quote.vendorName === request.vendorName);
   const poTotal = purchaseOrderTotal(request);
@@ -997,7 +1121,7 @@ function PurchaseOrderDocument({ request, onClose }: { request: PurchaseRequest;
     <header className="lci-po-header"><img src={`${import.meta.env.BASE_URL}life-college-international-logo.png`} alt="Life College International" /><div className="lci-po-header-right"><em>Learn and Live Fully.</em><div className="lci-po-number-box"><small>P.O. Number</small><strong>{poNumber}</strong><span><small>Date issued</small><b>{issuedDate}</b></span></div></div></header>
     <div className="lci-po-legal">All Sales/Service Invoices must be issued under: <strong>THE LEADERSHIP, INNOVATION, FAITH AND EXCELLENCE ACADEMY INTERNATIONAL INC.</strong><span>TIN: 265-999-997-00000</span><small>CCF Center, Ortigas East, Ortigas Ave. cor C-5 Road, Ugong, Pasig City</small></div>
     <div className="lci-po-titlebar"><h3>Purchase Order</h3><em>Official procurement document - retain for records</em></div>
-    <div className="lci-po-reference-strip"><span><small>Source Purchase Request</small><b>{request.id}</b></span><span><small>Current Status</small><b>{request.status}</b></span><span><small>Requesting Department</small><b>{request.department}</b></span></div>
+    <div className="lci-po-reference-strip"><span><small>Source Purchase Request</small><b>{sourcePurchaseRequestNumber(request)}{request.sourcingLotCategory ? ` · ${request.sourcingLotCategory}` : ''}</b></span><span><small>Current Status</small><b>{request.status}</b></span><span><small>Requesting Department</small><b>{request.department}</b></span></div>
     <div className="lci-po-content">
       <PoDocumentSection title="Supplier Information"><div className="lci-po-fields two"><PoDocumentField label="Supplier / Vendor Name" value={request.vendorName || 'Vendor not selected'} /><PoDocumentField label="Contact Person" value={vendor?.notes || 'Vendor account representative'} /><PoDocumentField className="wide" label="Address" value={vendorAddress} /><PoDocumentField label="Tel. / Mobile No." value={vendor?.phone || 'Contact number on vendor profile'} /><PoDocumentField label="Email Address" value={request.vendorEmail || vendor?.email || 'No vendor email recorded'} /></div></PoDocumentSection>
       <PoDocumentSection title="Order Details"><div className="lci-po-fields four"><PoDocumentField label="Terms of Payment" value={selectedQuote?.terms || vendor?.terms || '30 days'} /><PoDocumentField label="Turnaround Time" value={selectedQuote ? `${selectedQuote.deliveryDays} days` : vendor?.lead || 'To be confirmed'} /><PoDocumentField label="Budget Under (Dept.)" value={request.department} /><PoDocumentField label="Priority" value={priority} /></div></PoDocumentSection>
@@ -1443,7 +1567,7 @@ function purchaseOrderActivity(request: PurchaseRequest) {
   const poCreatedIndex = history.findIndex((event) => event.action === 'create_po');
   const source = poCreatedIndex >= 0 ? history.slice(poCreatedIndex) : history;
   const currentStage = purchaseOrderStageIndex(request.status);
-  const poNumber = request.id.replace('PR-', 'PO-');
+  const poNumber = purchaseOrderNumber(request);
   const poTotal = purchaseOrderTotal(request);
   const executiveRole = poTotal === null ? 'the assigned executive' : executiveNotificationRole(poTotal);
   const startedAt = new Date(source.find((event) => event.action === 'create_po')?.createdAt ?? request.createdAt ?? Date.now()).getTime();
