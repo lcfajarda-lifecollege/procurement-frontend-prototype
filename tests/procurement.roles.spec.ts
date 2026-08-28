@@ -145,6 +145,17 @@ test('purchase order list exposes every PO and document preview', async ({ page 
   await expect(page.getByRole('dialog')).toContainText('Purchase Order');
   await expect(page.getByRole('dialog')).toContainText('₱89,000');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await page.evaluate(() => {
+    const records = JSON.parse(window.localStorage.getItem('procurement-requests') ?? '[]');
+    window.localStorage.setItem('procurement-requests', JSON.stringify(records.map((record: { id: string; rfqQuotes?: unknown[] }) => record.id === 'PR-2026-1009' ? { ...record, rfqQuotes: [] } : record)));
+  });
+  await page.reload();
+  await expect(page.locator('.po-total')).toContainText('PO total pending');
+  await expect(page.locator('.po-next-step')).toContainText('Quotation selection required');
+  await expect(page.getByRole('button', { name: 'View PO PDF' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Submit for Department Approval' })).toBeDisabled();
+  await expect(page.locator('.po-card')).not.toContainText('₱90,000');
 });
 
 test('desktop pages do not create horizontal viewport overflow', async ({ page }) => {

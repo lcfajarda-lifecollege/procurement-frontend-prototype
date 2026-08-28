@@ -616,6 +616,7 @@
 .po-total { display:grid; justify-items:end; gap:3px; text-align:right; }
 .po-total small { color:var(--muted); font-size:9px; font-weight:900; text-transform:uppercase; }
 .po-total strong { color:var(--maroon-strong); font-family:"Crimson Pro",Georgia,serif; font-size:30px; }
+.po-total.pending strong { color:var(--muted); font-family:inherit; font-size:14px; }
 .po-activity-title { margin-top:22px; }
 .po-activity-timeline { padding-bottom:2px; }
 @media (max-width:1100px) {
