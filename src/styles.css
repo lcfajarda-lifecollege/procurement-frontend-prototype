@@ -1383,7 +1383,7 @@ code {
 
 .pr-item-add-row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   border-bottom: 1px solid var(--line);
   padding: 0 16px 14px;
 }

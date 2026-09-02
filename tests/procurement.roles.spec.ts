@@ -68,6 +68,11 @@ test('requester can open a multi-item purchase request form with technology rout
   await page.getByRole('button', { name: 'New request' }).click();
   await expect(page.getByRole('heading', { name: /New purchase request/i, level: 2 })).toBeVisible();
   await page.getByRole('textbox', { name: 'Request title' }).fill('Playwright technology request');
+  await page.getByPlaceholder('Search or add a product').fill('Custom laboratory cart');
+  await page.getByLabel('New product description or specifications').fill('Stainless steel, lockable wheels, 120 kg capacity');
+  await page.getByLabel('New product estimated unit cost').fill('12500');
+  await page.getByRole('button', { name: /Add product to request/ }).click();
+  await expect(page.getByLabel('Custom laboratory cart description or specifications')).toHaveValue('Stainless steel, lockable wheels, 120 kg capacity');
   await page.getByPlaceholder('Search or add a product').click();
   await page.getByText('Laptop Computer', { exact: true }).click();
   await expect(page.getByLabel('Laptop Computer category')).toHaveValue('Technology');
