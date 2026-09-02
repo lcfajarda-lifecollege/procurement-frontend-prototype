@@ -73,6 +73,9 @@ test('requester can open a multi-item purchase request form with technology rout
   await page.getByLabel('New product estimated unit cost').fill('12500');
   await page.getByRole('button', { name: /Add product to request/ }).click();
   await expect(page.getByLabel('Custom laboratory cart description or specifications')).toHaveValue('Stainless steel, lockable wheels, 120 kg capacity');
+  const requestItemColumns = await page.locator('.pr-item-head, .pr-item-row').evaluateAll((rows) => rows.map((row) => Array.from(row.children).map((cell) => Math.round(cell.getBoundingClientRect().x))));
+  expect(requestItemColumns[1].every((position, index) => Math.abs(position - requestItemColumns[0][index]) <= 1)).toBe(true);
+  expect(await page.locator('.pr-item-table').evaluate((table) => table.getBoundingClientRect().right <= document.documentElement.clientWidth)).toBe(true);
   await page.getByPlaceholder('Search or add a product').click();
   await page.getByText('Laptop Computer', { exact: true }).click();
   await expect(page.getByLabel('Laptop Computer category')).toHaveValue('Technology');
