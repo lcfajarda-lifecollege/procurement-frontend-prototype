@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This prototype uses one dummy Purchase Request so the complete procurement lifecycle can be reviewed without a crowded list of sample records.
+This prototype uses two focused dummy Purchase Requests so the beginning of the workflow and requester quotation selection can both be reviewed without a crowded list of sample records.
 
 - Live prototype: <https://lcfajarda-lifecollege.github.io/procurement-frontend-prototype/>
-- Sample record: `PR-2026-1001 - Smart Classroom Equipment Renewal`
-- Starting stage: `For Procurement Review`
+- `PR-2026-1001 - Smart Classroom Equipment Renewal`: `For Procurement Review`
+- `PR-2026-1002 - Faculty Laptop Replacement`: `For Requester Selection`
 - Requester: `Angela Mendoza`
 - Category: `Technology`
 
@@ -14,7 +14,9 @@ All people, vendors, products, prices, dates, notes, and documents in the protot
 
 ## How To Review
 
-Use the **View As** menu to change roles. The same PR advances after every completed action, so switch to the role responsible for the next stage instead of looking for another sample record.
+Use the **View As** menu to change roles. `PR-2026-1001` is retained at Procurement Review. `PR-2026-1002` has already completed Procurement Review, vendor sourcing, RFQ collection, quotation validation, and DT review so the requester can immediately test quotation selection. Its activity history shows those earlier stages.
+
+## Scenario A: Follow PR-2026-1001 Through Every Stage
 
 ### 1. Procurement Review
 
@@ -41,26 +43,36 @@ Expected status: `For DT Approval`
 
 1. Select **DT Department** from **View As**.
 2. Open **Approvals**.
-3. Select **Open quotation comparison**.
-4. Review every quoted technology item for each vendor.
-5. Mark each item as approved or not approved.
-6. Enter the DT review notes.
-7. Select **Complete DT review**.
+3. Select **Open quotation comparison** for `PR-2026-1001`.
+4. Review and decide on every quoted technology item.
+5. Enter the DT review notes.
+6. Select **Complete DT review**.
 
 Expected status: `For Requester Selection`
 
-### 4. Requester Quotation Selection
+### 4. Requester Selection And PO
+
+1. Select **Requester** and open **Purchase Requests**.
+2. Open `PR-2026-1001` and select **Compare quotations**.
+3. Choose and confirm a vendor.
+4. Continue with Scenario B, Steps 2 through 5, using `PR-2026-1001`.
+
+This route reaches every PR lifecycle stage and then continues through the complete PO lifecycle.
+
+## Scenario B: Open A Ready-Made Quotation Selection
+
+### 1. Requester Quotation Selection
 
 1. Select **Requester** from **View As**.
 2. Open **Purchase Requests**.
-3. Open `PR-2026-1001` and select **Compare quotations**.
+3. Open `PR-2026-1002`, marked **Choose vendor**, and select **Compare quotations**.
 4. Review vendor totals, terms, delivery, warranty, item prices, Procurement notes, and DT notes.
 5. Select one vendor quotation.
 6. Select **Confirm selected vendor**.
 
 Expected status: `Ready for PO Creation`
 
-### 5. Purchase Order Creation
+### 2. Purchase Order Creation
 
 1. Select **Procurement Officer** from **View As**.
 2. Open **RFQ & Sourcing** and open the PR.
@@ -71,7 +83,7 @@ Expected status: `Ready for PO Creation`
 
 Expected status: `For Department Approval`
 
-### 6. Purchase Order Approvals
+### 3. Purchase Order Approvals
 
 1. Select **Department Head**, open **Approvals**, and approve the PO.
 2. Select the executive role shown as the next approver and open **Approvals**.
@@ -81,7 +93,7 @@ For this sample value, the executive approver is **COO**.
 
 Expected status: `PO Approved`
 
-### 7. Vendor Acknowledgement And Receiving
+### 4. Vendor Acknowledgement And Receiving
 
 1. Return to **Procurement Officer** and open **Purchase Orders**.
 2. Select **Email approved PO to vendor**.
@@ -90,7 +102,7 @@ Expected status: `PO Approved`
 
 Expected status: `Received`
 
-### 8. Payment And Filing
+### 5. Payment And Filing
 
 1. Select **Finance Manager** and open **Receiving**.
 2. Select **Mark paid**.

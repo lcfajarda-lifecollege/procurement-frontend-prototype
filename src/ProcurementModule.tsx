@@ -288,9 +288,45 @@ const demoRequests: PurchaseRequest[] = [
       { action: 'create', actor: 'angela.mendoza@life.edu.ph', detail: 'Purchase Request submitted. Department Head and COO were notified based on the estimated request total, and the request was routed to Procurement Review.', createdAt: '2026-09-03T01:00:00Z' },
     ],
   },
+  {
+    id: 'PR-2026-1002',
+    title: 'Faculty Laptop Replacement',
+    department: 'Academic Affairs',
+    amount: 90000,
+    category: 'Technology',
+    requester: 'Angela Mendoza',
+    status: 'For Requester Selection',
+    due: 'In 10 days',
+    items: [
+      { name: 'Laptop Computer', category: 'Technology', description: '14-inch business laptop, Core Ultra 7 class, 16 GB RAM, 512 GB SSD', uom: 'UNIT', quantity: 2, unitPrice: 45000 },
+    ],
+    rfqQuotes: [
+      { vendorName: 'Power Mac Center, Inc.', vendorEmail: 'education@powermaccenter.com', status: 'Responded', reference: 'RFQ-2026-1002-A', deliveryDays: 12, terms: '30 days', warranty: 'One year onsite warranty', validUntil: '2026-09-30', attachmentName: 'RFQ-2026-1002-A.pdf', lotCategories: ['Technology'], items: [{ name: 'Laptop Computer', unitPrice: 44500 }] },
+      { vendorName: 'Enterprise Technology Solutions', vendorEmail: 'bids@ets.example', status: 'Responded', reference: 'RFQ-2026-1002-B', deliveryDays: 10, terms: '30 days', warranty: 'One year parts and labor', validUntil: '2026-09-30', attachmentName: 'RFQ-2026-1002-B.pdf', lotCategories: ['Technology'], items: [{ name: 'Laptop Computer', unitPrice: 45200 }] },
+    ],
+    procurementValidationNotes: 'Both quotations are complete, commercially comparable, and supported by the required vendor documents.',
+    procurementValidatedAt: '2026-09-03T05:00:00Z',
+    procurementValidatedBy: 'Procurement Office',
+    dtReviewNotes: 'Both laptop quotations meet the required technical specifications. The requester may compare price, delivery, and warranty coverage.',
+    dtReviewedAt: '2026-09-03T07:00:00Z',
+    dtReviewedBy: 'Digital Transformation Team',
+    createdAt: '2026-09-02T01:00:00Z',
+    updatedAt: '2026-09-03T07:05:00Z',
+    history: [
+      { action: 'create', actor: 'angela.mendoza@life.edu.ph', detail: 'Purchase Request submitted and routed to Procurement Review.', createdAt: '2026-09-02T01:00:00Z' },
+      { action: 'complete_review', actor: 'procurement@life.edu.ph', detail: 'Procurement review completed and qualified technology vendors were shortlisted.', createdAt: '2026-09-02T02:00:00Z' },
+      { action: 'vendor_sourcing', actor: 'procurement@life.edu.ph', detail: 'Qualified vendor sourcing opened for two technology vendors.', createdAt: '2026-09-02T02:05:00Z' },
+      { action: 'send_rfq', actor: 'procurement@life.edu.ph', detail: 'RFQs were sent to two qualified technology vendors.', createdAt: '2026-09-02T03:00:00Z' },
+      { action: 'record_quotations', actor: 'procurement@life.edu.ph', detail: 'Two complete, itemized vendor quotations were received.', createdAt: '2026-09-03T04:30:00Z' },
+      { action: 'validate_quotations', actor: 'procurement@life.edu.ph', detail: 'Both quotations were validated as complete and commercially comparable.', createdAt: '2026-09-03T05:00:00Z' },
+      { action: 'submit_quotes', actor: 'procurement@life.edu.ph', detail: 'Technology quotation lines were routed to Digital Transformation for technical review.', createdAt: '2026-09-03T05:05:00Z' },
+      { action: 'complete_dt_review', actor: 'dt.review@life.edu.ph', detail: 'Both vendor quotations were endorsed as technically suitable.', createdAt: '2026-09-03T07:00:00Z' },
+      { action: 'requester_selection_opened', actor: 'procurement@life.edu.ph', detail: 'The endorsed quotations were released to Angela Mendoza for final vendor selection.', createdAt: '2026-09-03T07:05:00Z' },
+    ],
+  },
 ];
 
-const procurementDataVersion = 'single-guided-pr-2026-09-03-v1';
+const procurementDataVersion = 'two-guided-pr-scenarios-2026-09-03-v3';
 
 function loadRequestRecords(): PurchaseRequest[] {
   try {
