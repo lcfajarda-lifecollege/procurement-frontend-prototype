@@ -6,15 +6,16 @@ This prototype uses two focused dummy Purchase Requests so the beginning of the 
 
 - Live prototype: <https://lcfajarda-lifecollege.github.io/procurement-frontend-prototype/>
 - `PR-2026-1001 - Smart Classroom Equipment Renewal`: `For Procurement Review`
-- `PR-2026-1002 - Faculty Laptop Replacement`: `For Requester Selection`
+- `PR-2026-1002 - Academic Office Furniture and Supplies`: `For Requester Selection`
 - Requester: `Angela Mendoza`
-- Category: `Technology`
+- `PR-2026-1001` category: `Technology`
+- `PR-2026-1002` categories: `Furniture` and `Operational supplies`; neither lot requires DT review
 
 All people, vendors, products, prices, dates, notes, and documents in the prototype are dummy data for workflow validation only.
 
 ## How To Review
 
-Use the **View As** menu to change roles. `PR-2026-1001` is retained at Procurement Review. `PR-2026-1002` has already completed Procurement Review, vendor sourcing, RFQ collection, quotation validation, and DT review so the requester can immediately test quotation selection. Its activity history shows those earlier stages.
+Use the **View As** menu to change roles. `PR-2026-1001` is retained at Procurement Review. `PR-2026-1002` has already completed Procurement Review, vendor sourcing, RFQ collection, and quotation validation. Because it is non-technology, DT review is skipped and the requester can immediately test quotation selection. Its activity history shows those earlier stages.
 
 ## Scenario A: Follow PR-2026-1001 Through Every Stage
 
@@ -66,9 +67,9 @@ This route reaches every PR lifecycle stage and then continues through the compl
 1. Select **Requester** from **View As**.
 2. Open **Purchase Requests**.
 3. Open `PR-2026-1002`, marked **Choose vendor**, and select **Compare quotations**.
-4. Review vendor totals, terms, delivery, warranty, item prices, Procurement notes, and DT notes.
-5. Select one vendor quotation.
-6. Select **Confirm selected vendor**.
+4. Review vendor totals, terms, delivery, warranty, item prices, and Procurement notes for each lot.
+5. Select one Furniture quotation and one Operational supplies quotation.
+6. Select **Confirm vendor awards**.
 
 Expected status: `Ready for PO Creation`
 
@@ -76,7 +77,7 @@ Expected status: `Ready for PO Creation`
 
 1. Select **Procurement Officer** from **View As**.
 2. Open **RFQ & Sourcing** and open the PR.
-3. Select **Create 1 PO**.
+3. Select **Create 2 POs**. Each category lot becomes a separate PO for its selected vendor.
 4. Open **Purchase Orders**.
 5. Review the PO and its final selected quotation total.
 6. Select **Submit for Department Approval**.

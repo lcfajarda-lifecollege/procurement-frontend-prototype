@@ -290,43 +290,43 @@ const demoRequests: PurchaseRequest[] = [
   },
   {
     id: 'PR-2026-1002',
-    title: 'Faculty Laptop Replacement',
+    title: 'Academic Office Furniture and Supplies',
     department: 'Academic Affairs',
-    amount: 90000,
-    category: 'Technology',
+    amount: 107750,
+    category: 'Multiple categories',
     requester: 'Angela Mendoza',
     status: 'For Requester Selection',
     due: 'In 10 days',
     items: [
-      { name: 'Laptop Computer', category: 'Technology', description: '14-inch business laptop, Core Ultra 7 class, 16 GB RAM, 512 GB SSD', uom: 'UNIT', quantity: 2, unitPrice: 45000 },
+      { name: 'Office Chair', category: 'Furniture', description: 'Ergonomic mesh chair with adjustable height and lumbar support', uom: 'UNIT', quantity: 20, unitPrice: 4200 },
+      { name: 'Bond Paper A4', category: 'Operational supplies', description: 'A4, 80 gsm, 500 sheets per ream', uom: 'REAM', quantity: 50, unitPrice: 285 },
+      { name: 'Printer Ink', category: 'Operational supplies', description: 'Original high-yield ink cartridge compatible with office printers', uom: 'CARTRIDGE', quantity: 10, unitPrice: 950 },
     ],
     rfqQuotes: [
-      { vendorName: 'Power Mac Center, Inc.', vendorEmail: 'education@powermaccenter.com', status: 'Responded', reference: 'RFQ-2026-1002-A', deliveryDays: 12, terms: '30 days', warranty: 'One year onsite warranty', validUntil: '2026-09-30', attachmentName: 'RFQ-2026-1002-A.pdf', lotCategories: ['Technology'], items: [{ name: 'Laptop Computer', unitPrice: 44500 }] },
-      { vendorName: 'Enterprise Technology Solutions', vendorEmail: 'bids@ets.example', status: 'Responded', reference: 'RFQ-2026-1002-B', deliveryDays: 10, terms: '30 days', warranty: 'One year parts and labor', validUntil: '2026-09-30', attachmentName: 'RFQ-2026-1002-B.pdf', lotCategories: ['Technology'], items: [{ name: 'Laptop Computer', unitPrice: 45200 }] },
+      { vendorName: 'Lem Fajarda Merchandise', vendorEmail: 'sales@lemfajarda.example', status: 'Responded', reference: 'RFQ-2026-1002-A', deliveryDays: 8, terms: '15 days', warranty: 'One year standard warranty', validUntil: '2026-09-30', attachmentName: 'RFQ-2026-1002-A.pdf', lotCategories: ['Furniture'], items: [{ name: 'Office Chair', unitPrice: 4100 }] },
+      { vendorName: 'Office Warehouse, Inc.', vendorEmail: 'bids@officewarehouse.example', status: 'Responded', reference: 'RFQ-2026-1002-B', deliveryDays: 10, terms: '30 days', warranty: 'One year standard warranty', validUntil: '2026-09-30', attachmentName: 'RFQ-2026-1002-B.pdf', lotCategories: ['Furniture'], items: [{ name: 'Office Chair', unitPrice: 4250 }] },
+      { vendorName: 'Metro Office Solutions', vendorEmail: 'sales@metrooffice.example', status: 'Responded', reference: 'RFQ-2026-1002-C', deliveryDays: 6, terms: '30 days', warranty: 'Manufacturer warranty', validUntil: '2026-09-30', attachmentName: 'RFQ-2026-1002-C.pdf', lotCategories: ['Operational supplies'], items: [{ name: 'Bond Paper A4', unitPrice: 278 }, { name: 'Printer Ink', unitPrice: 930 }] },
+      { vendorName: 'Campus Supply Trading', vendorEmail: 'bids@campussupply.example', status: 'Responded', reference: 'RFQ-2026-1002-D', deliveryDays: 7, terms: '15 days', warranty: 'Manufacturer warranty', validUntil: '2026-09-30', attachmentName: 'RFQ-2026-1002-D.pdf', lotCategories: ['Operational supplies'], items: [{ name: 'Bond Paper A4', unitPrice: 282 }, { name: 'Printer Ink', unitPrice: 920 }] },
     ],
-    procurementValidationNotes: 'Both quotations are complete, commercially comparable, and supported by the required vendor documents.',
+    procurementValidationNotes: 'All four quotations are complete, commercially comparable within their respective lots, and supported by the required vendor documents.',
     procurementValidatedAt: '2026-09-03T05:00:00Z',
     procurementValidatedBy: 'Procurement Office',
-    dtReviewNotes: 'Both laptop quotations meet the required technical specifications. The requester may compare price, delivery, and warranty coverage.',
-    dtReviewedAt: '2026-09-03T07:00:00Z',
-    dtReviewedBy: 'Digital Transformation Team',
     createdAt: '2026-09-02T01:00:00Z',
     updatedAt: '2026-09-03T07:05:00Z',
     history: [
       { action: 'create', actor: 'angela.mendoza@life.edu.ph', detail: 'Purchase Request submitted and routed to Procurement Review.', createdAt: '2026-09-02T01:00:00Z' },
-      { action: 'complete_review', actor: 'procurement@life.edu.ph', detail: 'Procurement review completed and qualified technology vendors were shortlisted.', createdAt: '2026-09-02T02:00:00Z' },
-      { action: 'vendor_sourcing', actor: 'procurement@life.edu.ph', detail: 'Qualified vendor sourcing opened for two technology vendors.', createdAt: '2026-09-02T02:05:00Z' },
-      { action: 'send_rfq', actor: 'procurement@life.edu.ph', detail: 'RFQs were sent to two qualified technology vendors.', createdAt: '2026-09-02T03:00:00Z' },
-      { action: 'record_quotations', actor: 'procurement@life.edu.ph', detail: 'Two complete, itemized vendor quotations were received.', createdAt: '2026-09-03T04:30:00Z' },
-      { action: 'validate_quotations', actor: 'procurement@life.edu.ph', detail: 'Both quotations were validated as complete and commercially comparable.', createdAt: '2026-09-03T05:00:00Z' },
-      { action: 'submit_quotes', actor: 'procurement@life.edu.ph', detail: 'Technology quotation lines were routed to Digital Transformation for technical review.', createdAt: '2026-09-03T05:05:00Z' },
-      { action: 'complete_dt_review', actor: 'dt.review@life.edu.ph', detail: 'Both vendor quotations were endorsed as technically suitable.', createdAt: '2026-09-03T07:00:00Z' },
-      { action: 'requester_selection_opened', actor: 'procurement@life.edu.ph', detail: 'The endorsed quotations were released to Angela Mendoza for final vendor selection.', createdAt: '2026-09-03T07:05:00Z' },
+      { action: 'complete_review', actor: 'procurement@life.edu.ph', detail: 'Procurement review completed and the request was separated into Furniture and Operational supplies sourcing lots.', createdAt: '2026-09-02T02:00:00Z' },
+      { action: 'vendor_sourcing', actor: 'procurement@life.edu.ph', detail: 'Qualified vendor sourcing opened independently for both category lots.', createdAt: '2026-09-02T02:05:00Z' },
+      { action: 'send_rfq', actor: 'procurement@life.edu.ph', detail: 'Separate RFQs were sent to two qualified vendors per sourcing lot.', createdAt: '2026-09-02T03:00:00Z' },
+      { action: 'record_quotations', actor: 'procurement@life.edu.ph', detail: 'Four complete, itemized vendor quotations were received across two lots.', createdAt: '2026-09-03T04:30:00Z' },
+      { action: 'validate_quotations', actor: 'procurement@life.edu.ph', detail: 'All quotations were validated as complete and commercially comparable within their respective lots.', createdAt: '2026-09-03T05:00:00Z' },
+      { action: 'dt_review_skipped', actor: 'procurement@life.edu.ph', detail: 'DT review was not required because this request contains no technology products.', createdAt: '2026-09-03T05:05:00Z' },
+      { action: 'requester_selection_opened', actor: 'procurement@life.edu.ph', detail: 'The validated quotations were released to Angela Mendoza for final vendor selection.', createdAt: '2026-09-03T05:10:00Z' },
     ],
   },
 ];
 
-const procurementDataVersion = 'two-guided-pr-scenarios-2026-09-03-v3';
+const procurementDataVersion = 'two-guided-pr-scenarios-2026-09-03-v5';
 
 function loadRequestRecords(): PurchaseRequest[] {
   try {

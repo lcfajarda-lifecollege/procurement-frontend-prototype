@@ -121,7 +121,7 @@ test('procurement officer sees the sourcing record awaiting requester selection 
   await expect(page.getByRole('heading', { name: /All RFQs|Procurement Review|RFQ & Vendor Sourcing/ })).toBeVisible();
   await expect(page.locator('.rfq-list-row')).toHaveCount(2);
   await page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1002' }).click();
-  await expect(page.getByRole('heading', { name: 'Faculty Laptop Replacement' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Academic Office Furniture and Supplies' })).toBeVisible();
   await expect(page.getByText('For Requester Selection', { exact: true })).toBeVisible();
   await expect(page.locator('.vendor-quotation-entry')).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Create 1 PO' })).toHaveCount(0);
@@ -137,8 +137,22 @@ test('requester can immediately open the seeded quotation selection PR', async (
   await expect(selectionRequest).toContainText('Choose vendor');
   await selectionRequest.click();
   await page.getByRole('button', { name: 'Compare quotations' }).click();
-  await expect(page.locator('.requester-quote-choice')).toHaveCount(2);
-  await expect(page.getByText('Digital Transformation Review')).toBeVisible();
+  const lots = page.getByTestId('requester-sourcing-lot');
+  await expect(lots).toHaveCount(2);
+  await expect(lots.nth(0)).toContainText('Furniture');
+  await expect(lots.nth(1)).toContainText('Operational supplies');
+  await expect(lots.nth(0).locator('.requester-quote-choice')).toHaveCount(2);
+  await expect(lots.nth(1).locator('.requester-quote-choice')).toHaveCount(2);
+  await expect(page.getByText('Procurement Validation')).toBeVisible();
+  await expect(page.getByText('Digital Transformation Review')).toHaveCount(0);
+  await lots.nth(0).locator('.requester-quote-choice').first().click();
+  await lots.nth(1).locator('.requester-quote-choice').first().click();
+  await page.getByRole('button', { name: 'Confirm vendor awards' }).click();
+  await expect(page.locator('.queue-card .queue-item').filter({ hasText: 'PR-2026-1002' })).toContainText('Ready for PO Creation');
+  await viewAs(page, 'Procurement Officer');
+  await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
+  await page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1002' }).click();
+  await expect(page.getByRole('button', { name: 'Create 2 POs' })).toBeEnabled();
 });
 
 test('finance can access Receiving and owns Mark paid when a receipt is ready', async ({ page }) => {
