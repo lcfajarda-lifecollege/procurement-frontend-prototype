@@ -55,11 +55,12 @@ test('dashboard workflow stages reveal details on hover', async ({ page }) => {
 test('purchase request activity explains every reached lifecycle stage', async ({ page }) => {
   await viewAs(page, 'Super Admin');
   await page.getByRole('button', { name: 'Purchase Requests' }).click();
-  await page.locator('.queue-card .queue-item').filter({ hasText: 'PR-2026-1005' }).click();
-  await expect(page.getByText('Stage 5 of 9', { exact: false })).toBeVisible();
-  await expect(page.locator('.request-activity-list .movement-event')).toHaveCount(5);
+  await expect(page.locator('.queue-card .queue-item')).toHaveCount(1);
+  await page.locator('.queue-card .queue-item').filter({ hasText: 'PR-2026-1001' }).click();
+  await expect(page.getByText('Stage 3 of 9', { exact: false })).toBeVisible();
+  await expect(page.locator('.request-activity-list .movement-event')).toHaveCount(3);
   await expect(page.locator('.request-activity-list')).toContainText('Purchase request drafted');
-  await expect(page.locator('.request-activity-list')).toContainText('Vendor sourcing opened');
+  await expect(page.locator('.request-activity-list')).toContainText('Procurement review started');
 });
 
 test('requester can open a multi-item purchase request form with technology routing', async ({ page }) => {
@@ -94,9 +95,10 @@ test('procurement officer has sourcing tools but cannot mark a purchase paid', a
   await viewAs(page, 'Procurement Officer');
   await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
   await expect(page.getByRole('heading', { name: /All RFQs|Procurement Review|RFQ & Vendor Sourcing/ })).toBeVisible();
-  await page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1003' }).click();
+  await expect(page.locator('.rfq-list-row')).toHaveCount(1);
+  await page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1001' }).click();
   await expect(page.getByRole('heading', { name: 'Procurement Review', exact: true })).toBeVisible();
-  await expect(page.getByText('₱128,500')).toHaveCount(0);
+  await expect(page.getByText('₱282,000')).toHaveCount(0);
   await expect(page.getByText(/estimated/i)).toHaveCount(0);
   await expect(page.getByText('Review specifications and quantities')).toBeVisible();
   await expect(page.getByText('Procurement validation')).toHaveCount(0);
@@ -105,20 +107,16 @@ test('procurement officer has sourcing tools but cannot mark a purchase paid', a
   await expect(page.getByRole('button', { name: 'Return for clarification' })).toBeDisabled();
   await page.getByRole('textbox', { name: 'Procurement review notes' }).fill('Please clarify the delivery deadline.');
   await expect(page.getByRole('button', { name: 'Return for clarification' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Back to all RFQs & Sourcing' }).click();
-  const twoLotRfq = page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1022' });
-  await expect(twoLotRfq).toContainText('2 sourcing lots · 4 vendors');
-  await expect(twoLotRfq).toContainText('RFQ Draft');
-  await twoLotRfq.click();
-  await expect(page.locator('.sourcing-lot-tabs button')).toHaveCount(2);
-  await expect(page.locator('.sourcing-lot-tabs')).toContainText('Technology');
-  await expect(page.locator('.sourcing-lot-tabs')).toContainText('Operational supplies');
+  await page.getByRole('button', { name: 'Complete review and begin sourcing' }).click();
+  await expect(page.getByText('No vendors selected for Technology')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send all category RFQs' })).toBeDisabled();
+  const vendorSelect = page.getByLabel('Select an existing vendor');
+  await vendorSelect.selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Add to this lot' }).click();
+  await vendorSelect.selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Add to this lot' }).click();
   await expect(page.locator('.vendor-sourcing-grid article')).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Send all category RFQs' })).toBeEnabled();
-  await page.locator('.sourcing-lot-tabs button').filter({ hasText: 'Operational supplies' }).click();
-  await expect(page.locator('.locked-pr-products')).toContainText('Printer Ink');
-  await expect(page.locator('.locked-pr-products')).toContainText('Bond Paper A4');
-  await expect(page.locator('.vendor-sourcing-grid article')).toHaveCount(2);
   await page.getByRole('button', { name: 'Receiving' }).click();
   await expect(page.getByRole('button', { name: 'Mark paid' })).toHaveCount(0);
 });
@@ -149,48 +147,87 @@ test('vendor and product management dialogs are functional', async ({ page }) =>
   await expect(page.getByText('Estimated purchase price')).toBeVisible();
 });
 
-test('purchase order list exposes every PO and document preview', async ({ page }) => {
-  await viewAs(page, 'Super Admin');
+test('one guided PR advances through quotation selection and the complete PO lifecycle', async ({ page }) => {
+  await viewAs(page, 'Procurement Officer');
+  await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
+  await page.locator('.rfq-list-row').click();
+  await page.getByRole('button', { name: 'Complete review and begin sourcing' }).click();
+
+  const vendorSelect = page.getByLabel('Select an existing vendor');
+  for (let index = 0; index < 2; index += 1) {
+    await vendorSelect.selectOption({ index: 1 });
+    await page.getByRole('button', { name: 'Add to this lot' }).click();
+  }
+  await page.getByRole('button', { name: 'Send all category RFQs' }).click();
+  const quotationStatuses = page.locator('.vendor-quotation-status select');
+  await expect(quotationStatuses).toHaveCount(2);
+  for (let index = 0; index < 2; index += 1) await quotationStatuses.nth(index).selectOption('Responded');
+  await page.getByRole('button', { name: 'Close all RFQs' }).click();
+  await page.getByLabel('Procurement Validation Notes').fill('Quotations are complete and ready for technical review.');
+  await page.getByRole('button', { name: 'Submit quotations for review' }).click();
+
+  await viewAs(page, 'DT Department');
+  await page.getByRole('button', { name: /Approvals/ }).click();
+  await page.getByRole('button', { name: 'Open quotation comparison' }).click();
+  const technicalDecisions = page.locator('.dt-comparison-item:not(.out-of-scope) select');
+  await expect(technicalDecisions).toHaveCount(4);
+  for (let index = 0; index < 4; index += 1) await technicalDecisions.nth(index).selectOption('approved');
+  await page.getByLabel('DT review notes').fill('Both quotations are technically suitable.');
+  await page.getByRole('button', { name: 'Complete DT review' }).click();
+
+  await viewAs(page, 'Requester');
+  await page.getByRole('button', { name: 'Purchase Requests' }).click();
+  await page.getByRole('button', { name: 'Compare quotations' }).click();
+  await page.locator('.requester-quote-choice').first().click();
+  await page.getByRole('button', { name: 'Confirm selected vendor' }).click();
+
+  await viewAs(page, 'Procurement Officer');
+  await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
+  await page.locator('.rfq-list-row').click();
+  await page.getByRole('button', { name: 'Create 1 PO' }).click();
   await page.getByRole('button', { name: 'Purchase Orders' }).click();
-  await expect(page.getByRole('heading', { name: /Purchase orders \(\d+\)/i })).toBeVisible();
-  const rows = page.locator('.queue-card .queue-item');
-  expect(await rows.count()).toBeGreaterThan(1);
-  await expect(rows.first()).not.toContainText('₱89,000');
-  await expect(page.locator('.po-master-detail .queue-card')).not.toContainText('₱');
-  await expect(page.locator('.po-total')).toContainText('PO total');
-  await expect(page.locator('.po-total')).toContainText('₱89,000');
-  await expect(page.getByText('Purchase Order activity', { exact: true })).toBeVisible();
-  await expect(page.locator('.po-activity-timeline .movement-event')).toHaveCount(1);
-  await expect(page.locator('.po-activity-timeline')).toContainText('Purchase order created');
+  await expect(page.locator('.queue-card .queue-item')).toHaveCount(1);
+  await expect(page.locator('.po-total')).toContainText('₱282,000');
   await page.getByRole('button', { name: 'View PO PDF' }).click();
-  await expect(page.getByRole('dialog')).toContainText('Purchase Order');
-  await expect(page.getByRole('dialog')).toContainText('₱89,000');
+  await expect(page.getByRole('dialog')).toContainText('PO-2026-1001');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Submit for Department Approval' }).click();
 
-  await page.locator('.po-master-detail .queue-item').filter({ hasText: 'PO-2026-1018' }).click();
-  await expect(page.getByText('Stage 7 of 8')).toBeVisible();
-  await expect(page.locator('.po-activity-timeline .movement-event')).toHaveCount(7);
-  await expect(page.locator('.po-activity-timeline')).toContainText('Purchase order created');
-  await expect(page.locator('.po-activity-timeline')).toContainText('Department Head approval completed');
-  await expect(page.locator('.po-activity-timeline')).toContainText('Executive approval completed');
-  await expect(page.locator('.po-activity-timeline')).toContainText('Purchase order emailed');
-  await expect(page.locator('.po-activity-timeline')).toContainText('Vendor acknowledgement recorded');
-  await expect(page.locator('.po-activity-timeline')).toContainText('Delivery received');
+  await viewAs(page, 'Department Head');
+  await page.getByRole('button', { name: /Approvals/ }).click();
+  await page.getByRole('button', { name: 'Approve to COO' }).click();
+  await viewAs(page, 'COO');
+  await page.getByRole('button', { name: /Approvals/ }).click();
+  await page.getByRole('button', { name: 'Approve Purchase Order' }).click();
 
-  await page.evaluate(() => {
-    const records = JSON.parse(window.localStorage.getItem('procurement-requests') ?? '[]');
-    window.localStorage.setItem('procurement-requests', JSON.stringify(records.map((record: { id: string; rfqQuotes?: unknown[] }) => record.id === 'PR-2026-1009' ? { ...record, rfqQuotes: [] } : record)));
-  });
-  await page.reload();
-  await expect(page.locator('.po-total')).toContainText('PO total pending');
-  await expect(page.locator('.po-next-step')).toContainText('Quotation selection required');
-  await expect(page.getByRole('button', { name: 'View PO PDF' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Submit for Department Approval' })).toBeDisabled();
-  await expect(page.locator('.po-card')).not.toContainText('₱90,000');
+  await viewAs(page, 'Procurement Officer');
+  await page.getByRole('button', { name: 'Purchase Orders' }).click();
+  await page.getByRole('button', { name: 'Email approved PO to vendor' }).click();
+  await page.getByRole('button', { name: 'Record acknowledgement' }).click();
+  await page.getByRole('button', { name: 'Receiving' }).click();
+  await page.getByRole('button', { name: 'Record receipt' }).click();
+
+  await viewAs(page, 'Finance Manager');
+  await page.getByRole('button', { name: 'Receiving' }).click();
+  await page.getByRole('button', { name: 'Mark paid' }).click();
+  await viewAs(page, 'Procurement Officer');
+  await page.getByRole('button', { name: 'Receiving' }).click();
+  await page.getByRole('button', { name: 'File and close' }).click();
+  await page.getByRole('button', { name: 'Purchase Orders' }).click();
+  await expect(page.getByText('Stage 8 of 8')).toBeVisible();
+  await expect(page.locator('.po-activity-timeline')).toContainText('Procurement record filed');
 });
 
 test('multi-category request awards vendors by sourcing lot and creates separate POs', async ({ page }) => {
   await viewAs(page, 'Super Admin');
+  await page.evaluate(() => {
+    const items = [
+      { name: 'Projector', category: 'Technology', description: 'Full HD laser projector', uom: 'UNIT', quantity: 2, unitPrice: 32000 },
+      { name: 'Office Chair', category: 'Furniture', description: 'Ergonomic mesh chair', uom: 'UNIT', quantity: 4, unitPrice: 4200 },
+    ];
+    const quote = (vendorName: string, vendorEmail: string, reference: string, projectorPrice: number, chairPrice: number) => ({ vendorName, vendorEmail, status: 'Responded', reference, deliveryDays: 7, terms: '30 days', warranty: 'One year', validUntil: '2026-09-30', attachmentName: `${reference}.pdf`, lotCategories: ['Technology', 'Furniture'], items: [{ name: 'Projector', unitPrice: projectorPrice }, { name: 'Office Chair', unitPrice: chairPrice }] });
+    window.localStorage.setItem('procurement-requests', JSON.stringify([{ id: 'PR-2026-1021', title: 'Smart Classroom Equipment Renewal', department: 'Academic Affairs', amount: 80800, category: 'Multiple categories', requester: 'Angela Mendoza', status: 'For Requester Selection', due: 'In 14 days', items, rfqQuotes: [quote('Power Mac Center, Inc.', 'education@powermaccenter.com', 'RFQ-2026-1021-A', 31500, 4150), quote('Office Warehouse, Inc.', 'bids@officewarehouse.example', 'RFQ-2026-1021-B', 32500, 4050)], createdAt: '2026-09-03T01:00:00Z', updatedAt: '2026-09-03T01:00:00Z', history: [] }]));
+  });
   await page.goto('/requests/PR-2026-1021/vendor-selection');
   await expect(page.getByRole('heading', { name: 'Smart Classroom Equipment Renewal' })).toBeVisible();
   const lots = page.getByTestId('requester-sourcing-lot');
