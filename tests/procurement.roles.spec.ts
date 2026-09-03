@@ -119,7 +119,14 @@ test('procurement officer sees the sourcing record awaiting requester selection 
   await viewAs(page, 'Procurement Officer');
   await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
   await expect(page.getByRole('heading', { name: /All RFQs|Procurement Review|RFQ & Vendor Sourcing/ })).toBeVisible();
-  await expect(page.locator('.rfq-list-row')).toHaveCount(2);
+  await expect(page.locator('.rfq-list-row')).toHaveCount(8);
+  await expect(page.locator('.rfq-list-row').filter({ hasText: 'Source PR-2026-1001' })).toHaveCount(7);
+  await expect(page.locator('.stage-preview-row')).toHaveCount(6);
+  const sentStagePreview = page.locator('.stage-preview-row').filter({ hasText: 'RFQ Sent' });
+  await sentStagePreview.click();
+  await expect(page.getByText('Read-only lifecycle preview')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close all RFQs' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to sourcing' }).click();
   await page.locator('.rfq-list-row').filter({ hasText: 'PR-2026-1002' }).click();
   await expect(page.getByRole('heading', { name: 'Academic Office Furniture and Supplies' })).toBeVisible();
   await expect(page.getByText('For Requester Selection', { exact: true })).toBeVisible();
@@ -185,7 +192,7 @@ test('one guided PR advances through quotation selection and the complete PO lif
   await seedProcurementReviewRequest(page);
   await viewAs(page, 'Procurement Officer');
   await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
-  await page.locator('.rfq-list-row').click();
+  await page.locator('.rfq-list-row:not(.stage-preview-row)').filter({ hasText: 'PR-2026-1001' }).click();
   await page.getByRole('button', { name: 'Complete review and begin sourcing' }).click();
 
   const vendorSelect = page.getByLabel('Select an existing vendor');
@@ -218,7 +225,7 @@ test('one guided PR advances through quotation selection and the complete PO lif
 
   await viewAs(page, 'Procurement Officer');
   await page.getByRole('button', { name: /RFQ & Sourcing/ }).click();
-  await page.locator('.rfq-list-row').click();
+  await page.locator('.rfq-list-row:not(.stage-preview-row)').filter({ hasText: 'PR-2026-1001' }).click();
   await page.getByRole('button', { name: 'Create 1 PO' }).click();
   await page.getByRole('button', { name: 'Purchase Orders' }).click();
   await expect(page.locator('.queue-card .queue-item')).toHaveCount(1);

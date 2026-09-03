@@ -17,6 +17,8 @@ All people, vendors, products, prices, dates, notes, and documents in the protot
 
 Use the **View As** menu to change roles. `PR-2026-1001` is retained at Procurement Review. `PR-2026-1002` has already completed Procurement Review, vendor sourcing, RFQ collection, and quotation validation. Because it is non-technology, DT review is skipped and the requester can immediately test quotation selection. Its activity history shows those earlier stages.
 
+When viewing **RFQ & Sourcing** as **Procurement Officer**, **All RFQs** also displays read-only snapshots of `PR-2026-1001` at every sourcing lifecycle stage. Rows marked **Stage preview · Read only** demonstrate the screen without changing the live request, approvals, or notifications.
+
 ## Scenario A: Follow PR-2026-1001 Through Every Stage
 
 ### 1. Procurement Review
