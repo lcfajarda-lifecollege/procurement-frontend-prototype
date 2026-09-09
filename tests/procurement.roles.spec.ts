@@ -43,6 +43,14 @@ async function seedProcurementReviewRequest(page: Page) {
 
 test.beforeEach(async ({ page }) => signIn(page));
 
+test('public prototype defaults to the Procurement Officer role', async ({ page }) => {
+  await expect(page.getByLabel('View as role')).toHaveValue('Procurement Officer');
+  const navigation = await visibleNavigation(page);
+  expect(navigation.some((label) => label.includes('RFQ & Sourcing'))).toBeTruthy();
+  expect(navigation.some((label) => label.includes('Purchase Orders'))).toBeTruthy();
+  await expect(page.getByLabel('View as role').locator('option')).toContainText(['Super Admin']);
+});
+
 test('role navigation is restricted to assigned responsibilities', async ({ page }) => {
   const matrix: Record<string, string[]> = {
     Requester: ['Dashboard', 'Purchase Requests', 'Products'],
@@ -294,7 +302,12 @@ test('multi-category request awards vendors by sourcing lot and creates separate
     const quote = (vendorName: string, vendorEmail: string, reference: string, projectorPrice: number, chairPrice: number) => ({ vendorName, vendorEmail, status: 'Responded', reference, deliveryDays: 7, terms: '30 days', warranty: 'One year', validUntil: '2026-09-30', attachmentName: `${reference}.pdf`, lotCategories: ['Technology', 'Furniture'], items: [{ name: 'Projector', unitPrice: projectorPrice }, { name: 'Office Chair', unitPrice: chairPrice }] });
     window.localStorage.setItem('procurement-requests', JSON.stringify([{ id: 'PR-2026-1021', title: 'Smart Classroom Equipment Renewal', department: 'Academic Affairs', amount: 80800, category: 'Multiple categories', requester: 'Angela Mendoza', status: 'For Requester Selection', due: 'In 14 days', items, rfqQuotes: [quote('Power Mac Center, Inc.', 'education@powermaccenter.com', 'RFQ-2026-1021-A', 31500, 4150), quote('Office Warehouse, Inc.', 'bids@officewarehouse.example', 'RFQ-2026-1021-B', 32500, 4050)], createdAt: '2026-09-03T01:00:00Z', updatedAt: '2026-09-03T01:00:00Z', history: [] }]));
   });
-  await page.goto('/requests/PR-2026-1021/vendor-selection');
+  await page.reload();
+  await viewAs(page, 'Requester');
+  await page.evaluate(() => {
+    window.history.pushState({}, '', '/requests/PR-2026-1021/vendor-selection');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
   await expect(page.getByRole('heading', { name: 'Smart Classroom Equipment Renewal' })).toBeVisible();
   const lots = page.getByTestId('requester-sourcing-lot');
   await expect(lots).toHaveCount(2);

@@ -181,7 +181,7 @@ export default function App() {
   const [activePath, setActivePath] = useState(() => normalizePath(window.location.pathname));
   const [darkMode, setDarkMode] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [procurementPreviewRole, setProcurementPreviewRole] = useState('Super Admin');
+  const [procurementPreviewRole, setProcurementPreviewRole] = useState('Procurement Officer');
   const [procurementWorkItems, setProcurementWorkItems] = useState<ProcurementWorkItem[]>(loadProcurementWorkItems);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
