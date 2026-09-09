@@ -94,6 +94,7 @@ interface PurchaseRequest {
   dtReviewedAt?: string;
   dtReviewedBy?: string;
   demoStagePreview?: boolean;
+  demoPoStagePreview?: boolean;
 }
 
 type VendorInformationStatus = 'Not requested' | 'Invitation pending' | 'Information complete';
@@ -363,6 +364,65 @@ function procurementOfficerStagePreviews() {
       history: [...(source.history ?? []), { action: 'add_qualified_vendor', actor: 'procurement@life.edu.ph', detail: 'Read-only lifecycle stage preview.', createdAt: `2026-09-03T0${index + 2}:00:00Z` }],
     };
   });
+}
+
+function purchaseOrderStagePreviews(previewKey: string) {
+  const [sourceId, requestedLot] = previewKey.split(':');
+  const source = demoRequests.find((request) => request.id === sourceId);
+  if (!source) return [];
+
+  const lotCategory = requestedLot || source.category;
+  const items = source.items?.filter((item) => item.category === lotCategory) ?? [];
+  const previewItems = items.length ? items : source.items ?? [];
+  const sourceQuote = sourceId === 'PR-2026-1001'
+    ? {
+        vendorName: 'Power Mac Center, Inc.',
+        vendorEmail: 'education@powermaccenter.com',
+        status: 'Responded' as const,
+        reference: 'RFQ-2026-1001-A',
+        deliveryDays: 12,
+        terms: '30 days',
+        warranty: 'One year onsite warranty',
+        validUntil: '2026-09-30',
+        attachmentName: 'RFQ-2026-1001-A.pdf',
+        lotCategories: ['Technology'],
+        items: [{ name: 'Projector', unitPrice: 31500 }, { name: 'Laptop Computer', unitPrice: 44200 }],
+      }
+    : source.rfqQuotes?.find((quote) => quote.lotCategories?.includes(lotCategory));
+  if (!sourceQuote) return [];
+
+  const lotIndex = sourceId === 'PR-2026-1002' ? (lotCategory === 'Furniture' ? 1 : 2) : 0;
+  const poNumber = sourceId.replace('PR-', 'PO-') + (lotIndex ? `-${String(lotIndex).padStart(2, '0')}` : '');
+  const poTotal = previewItems.reduce((total, item) => total + item.quantity * (sourceQuote.items.find((quotedItem) => quotedItem.name === item.name)?.unitPrice ?? 0), 0);
+  const executiveStatus: RequestStatus = poTotal <= 100000 ? 'For Finance Approval' : poTotal <= 999999 ? 'For COO Approval' : 'For President Approval';
+  const statuses: RequestStatus[] = ['PO Draft', 'For Department Approval', executiveStatus, 'PO Approved', 'PO Awaiting Acknowledgement', 'PO Acknowledged', 'Received', 'Filed'];
+  const createdAt = new Date('2026-09-04T01:00:00Z').getTime();
+  const quote = { ...sourceQuote, lotCategories: [lotCategory], items: sourceQuote.items.filter((quotedItem) => previewItems.some((item) => item.name === quotedItem.name)) };
+  const award = { category: lotCategory, vendorName: quote.vendorName, vendorEmail: quote.vendorEmail, quoteReference: quote.reference };
+
+  return statuses.map((status, index): PurchaseRequest => ({
+    ...source,
+    id: `${source.id}${lotIndex ? `-${String(lotIndex).padStart(2, '0')}` : ''}-STAGE-${index + 1}`,
+    sourceRequestId: source.id,
+    poNumber,
+    sourcingLotCategory: lotCategory,
+    category: lotCategory,
+    amount: previewItems.reduce((total, item) => total + item.quantity * item.unitPrice, 0),
+    items: previewItems,
+    status,
+    vendorName: quote.vendorName,
+    vendorEmail: quote.vendorEmail,
+    sourcingAwards: [award],
+    rfqQuotes: [quote],
+    demoPoStagePreview: true,
+    createdAt: new Date(createdAt).toISOString(),
+    updatedAt: new Date(createdAt + Math.max(index, 1) * 60 * 60_000).toISOString(),
+    history: [
+      ...(source.history ?? []),
+      { action: 'select_quote', actor: 'angela.mendoza@life.edu.ph', detail: `Requester selected ${quote.vendorName} for the ${lotCategory} sourcing lot.`, createdAt: new Date(createdAt - 60_000).toISOString() },
+      { action: 'create_po', actor: 'procurement@life.edu.ph', detail: `${poNumber} created from the requester-selected quotation for ${quote.vendorName}.`, createdAt: new Date(createdAt).toISOString() },
+    ],
+  }));
 }
 
 const procurementDataVersion = 'two-guided-pr-scenarios-2026-09-03-v5';
@@ -1130,11 +1190,27 @@ function ProcurementReview({ request, previewOnly = false, onBack, onComplete, o
 }
 
 function PurchaseOrdersView({ requests, role, onAction }: { requests: PurchaseRequest[]; role: Role; onAction: (id: string, action: string) => void }) {
+  const previewsEnabled = role === 'Procurement Officer';
+  const [previewKey, setPreviewKey] = useState(previewsEnabled && !requests.length ? 'PR-2026-1001' : '');
+  const visibleRequests = previewsEnabled && previewKey ? purchaseOrderStagePreviews(previewKey) : requests;
+  return <div className="proc-page po-view-shell"><PageHeading eyebrow="External commitment" title="Purchase Orders" detail="Route draft orders for approval, issue approved POs, and monitor vendor acknowledgement." />{previewsEnabled ? <PurchaseOrderPreviewSwitcher activeKey={previewKey} liveCount={requests.length} onSelect={setPreviewKey} /> : null}{previewKey ? <section className="stage-preview-notice"><Eye size={18} /><div><b>Read-only Purchase Order lifecycle previews</b><small>These dummy records show the selected PR or sourcing lot at all eight PO stages. They are examples only and cannot change the live workflow.</small></div></section> : null}<PurchaseOrdersDetailView key={previewKey || 'live-purchase-orders'} requests={visibleRequests} role={role} onAction={onAction} /></div>;
+}
+
+function PurchaseOrderPreviewSwitcher({ activeKey, liveCount, onSelect }: { activeKey: string; liveCount: number; onSelect: (key: string) => void }) {
+  const options = [
+    { key: 'PR-2026-1001', label: 'PR-2026-1001', detail: 'Technology PO' },
+    { key: 'PR-2026-1002:Furniture', label: 'PR-2026-1002', detail: 'Furniture PO' },
+    { key: 'PR-2026-1002:Operational supplies', label: 'PR-2026-1002', detail: 'Operational supplies PO' },
+  ];
+  return <section className="po-preview-switcher"><div className="po-preview-switcher-copy"><small>Procurement Officer demo</small><b>Choose a PO lifecycle scenario</b></div><div className="po-preview-options"><button type="button" className={!activeKey ? 'active' : ''} disabled={!liveCount} onClick={() => onSelect('')}><span>Live POs</span><small>{liveCount} record{liveCount === 1 ? '' : 's'}</small></button>{options.map((option) => <button type="button" className={activeKey === option.key ? 'active' : ''} key={option.key} onClick={() => onSelect(option.key)}><span>{option.label}</span><small>{option.detail}</small></button>)}</div></section>;
+}
+
+function PurchaseOrdersDetailView({ requests, role, onAction }: { requests: PurchaseRequest[]; role: Role; onAction: (id: string, action: string) => void }) {
   const [selectedId, setSelectedId] = useState(requests[0]?.id ?? '');
   const [documentRequest, setDocumentRequest] = useState<PurchaseRequest | null>(null);
   const request = requests.find((item) => item.id === selectedId) ?? requests[0];
   if (!request) return <EmptyWorkflow title="Purchase Orders" detail="A selected vendor quotation will create a purchase order here." />;
-  const canManagePo = ['Super Admin', 'Procurement Admin', 'Procurement Officer'].includes(role);
+  const canManagePo = !request.demoPoStagePreview && ['Super Admin', 'Procurement Admin', 'Procurement Officer'].includes(role);
   const draft = request.status === 'PO Draft';
   const approved = request.status === 'PO Approved';
   const awaitingAcknowledgement = request.status === 'PO Awaiting Acknowledgement';

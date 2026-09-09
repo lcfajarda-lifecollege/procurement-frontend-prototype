@@ -171,6 +171,30 @@ test('finance can access Receiving and owns Mark paid when a receipt is ready', 
   if (receivedStatus) await expect(page.getByRole('button', { name: 'Mark paid' })).toBeVisible();
 });
 
+test('procurement officer can review read-only PO stages for both guided PRs', async ({ page }) => {
+  await viewAs(page, 'Procurement Officer');
+  await page.getByRole('button', { name: 'Purchase Orders' }).click();
+
+  await expect(page.locator('.po-preview-switcher')).toBeVisible();
+  await expect(page.getByText('Read-only Purchase Order lifecycle previews')).toBeVisible();
+  await expect(page.locator('.po-master-detail .queue-item')).toHaveCount(8);
+  await expect(page.locator('.po-master-detail .queue-item').first()).toContainText('PO-2026-1001-STAGE-1');
+  await expect(page.locator('.po-total')).toContainText('₱277,400');
+  await expect(page.getByRole('button', { name: 'Submit for Department Approval' })).toHaveCount(0);
+
+  await page.locator('.po-preview-options button').filter({ hasText: 'Furniture PO' }).click();
+  await expect(page.locator('.po-master-detail .queue-item')).toHaveCount(8);
+  await expect(page.locator('.po-master-detail .queue-item').first()).toContainText('PO-2026-1002-01-STAGE-1');
+  await expect(page.locator('.po-total')).toContainText('₱82,000');
+
+  await page.locator('.po-preview-options button').filter({ hasText: 'Operational supplies PO' }).click();
+  await expect(page.locator('.po-master-detail .queue-item').first()).toContainText('PO-2026-1002-02-STAGE-1');
+  await expect(page.locator('.po-total')).toContainText('₱23,200');
+  await page.locator('.po-master-detail .queue-item').last().click();
+  await expect(page.getByText('Stage 8 of 8')).toBeVisible();
+  await expect(page.locator('.po-activity-timeline')).toContainText('Procurement record filed');
+});
+
 test('vendor and product management dialogs are functional', async ({ page }) => {
   await viewAs(page, 'Super Admin');
   await page.getByRole('button', { name: 'Vendors' }).click();

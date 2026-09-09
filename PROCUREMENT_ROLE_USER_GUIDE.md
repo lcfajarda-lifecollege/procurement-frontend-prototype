@@ -152,6 +152,18 @@ For multi-lot requests, the module creates one PO per awarded sourcing lot.
 
 These records show `PR-2026-1001` at each sourcing stage without changing the live workflow. They are intentionally visible only in the Procurement Officer view.
 
+### Review Purchase Order Stage Previews
+
+1. Select **Procurement Officer** from **View As**.
+2. Open **Purchase Orders**.
+3. Choose one of the PO lifecycle scenarios:
+   - `PR-2026-1001` - Technology PO
+   - `PR-2026-1002` - Furniture PO
+   - `PR-2026-1002` - Operational supplies PO
+4. Select any of the eight stage records to inspect its lifecycle position, next step, selected quotation total, and activity history.
+
+The duplicate-looking PO rows are read-only snapshots of the same order at different stages. They are included only to explain the workflow and will not be created as duplicate records in production.
+
 ## 3. DT Department
 
 ### Responsibilities
