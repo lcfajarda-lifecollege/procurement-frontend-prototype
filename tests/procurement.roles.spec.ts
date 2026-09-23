@@ -51,6 +51,25 @@ test('public prototype defaults to the Procurement Officer role', async ({ page 
   await expect(page.getByLabel('View as role').locator('option')).toContainText(['Super Admin']);
 });
 
+test('guided demo follows and resets the live PR-2026-1001 workflow', async ({ page }) => {
+  const guide = page.getByLabel('Guided procurement process demo');
+  await expect(guide).toContainText('Validate the Purchase Request');
+  await expect(guide).toContainText('Step 1 of 16');
+
+  await guide.getByRole('button', { name: 'Open as Procurement Officer' }).click();
+  await expect(page).toHaveURL(/\/sourcing$/);
+  await expect(guide.getByRole('button', { name: 'Current workspace' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Complete review and begin sourcing' }).click();
+  await expect(guide).toContainText('Build the Vendor Shortlist');
+  await expect(guide).toContainText('Step 2 of 16');
+
+  await guide.getByRole('button', { name: 'Reset demo' }).click();
+  await expect(page).toHaveURL(/\/sourcing$/);
+  await expect(guide).toContainText('Validate the Purchase Request');
+  await expect(guide).toContainText('For Procurement Review');
+});
+
 test('role navigation is restricted to assigned responsibilities', async ({ page }) => {
   const matrix: Record<string, string[]> = {
     Requester: ['Dashboard', 'Purchase Requests', 'Products'],

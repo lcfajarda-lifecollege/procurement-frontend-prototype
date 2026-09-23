@@ -17,6 +17,18 @@ All people, vendors, products, prices, dates, notes, and documents in the protot
 
 Use the **View As** menu to change roles. `PR-2026-1001` is retained at Procurement Review. `PR-2026-1002` has already completed Procurement Review, vendor sourcing, RFQ collection, and quotation validation. Because it is non-technology, DT review is skipped and the requester can immediately test quotation selection. Its activity history shows those earlier stages.
 
+### Guided Actual-Process Demo
+
+The guide at the top of every internal page follows the live `PR-2026-1001` record through the complete PR and PO process.
+
+1. Select **Open as [role]** to switch to the responsible role and open its correct workspace.
+2. Complete the highlighted workflow action in the regular module screen.
+3. Read the guide again; it automatically advances to the next step, role, and instruction.
+4. Continue until the record reaches **Filed** and the guide shows **Demo Complete**.
+5. Select **Reset demo** at any time to restore `PR-2026-1001` to Procurement Review and begin a fresh presentation.
+
+The guide is not a separate simulation. It observes and directs the existing workflow actions, activity histories, notifications, quotation selection, approvals, receiving, payment, and filing.
+
 When viewing **RFQ & Sourcing** as **Procurement Officer**, **All RFQs** also displays read-only snapshots of `PR-2026-1001` at every sourcing lifecycle stage. Rows marked **Stage preview · Read only** demonstrate the screen without changing the live request, approvals, or notifications.
 
 ## Scenario A: Follow PR-2026-1001 Through Every Stage

@@ -900,7 +900,13 @@ function ApprovalsView({ requests, role, onApprove, onNotify }: { requests: Purc
 }
 
 function MultiSourcingView({ requests, showLifecyclePreviews, onAction, onVendorSaved, onNotify }: { requests: PurchaseRequest[]; showLifecyclePreviews: boolean; onAction: (id: string, action: string) => void; onVendorSaved: (request: PurchaseRequest) => void; onNotify: (message: string) => void }) {
-  const [selectedId, setSelectedId] = useState('');
+  const guidedRequestId = window.sessionStorage.getItem('procurement-guided-open-request');
+  const [selectedId, setSelectedId] = useState(() => {
+    return requests.find((request) => sourcePurchaseRequestNumber(request) === guidedRequestId)?.id ?? '';
+  });
+  useEffect(() => {
+    if (guidedRequestId) window.sessionStorage.removeItem('procurement-guided-open-request');
+  }, [guidedRequestId]);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'all' | 'draft' | 'sent' | 'quotes' | 'selection'>('all');
   const liveSource = requests.find((request) => sourcePurchaseRequestNumber(request) === 'PR-2026-1001');
