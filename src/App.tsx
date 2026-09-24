@@ -1,7 +1,6 @@
 import {
   Bell,
   ChartColumnIncreasing,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Database,
@@ -14,7 +13,6 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  RotateCcw,
   Sun,
   Users,
   Workflow,
@@ -146,14 +144,6 @@ function roleFromSession(roles: string[]): string {
 
 type ProcurementWorkItem = { status: string; id?: string; title?: string; department?: string; amount?: number; requester?: string; createdAt?: string };
 
-type GuidedDemoStep = {
-  number: number;
-  title: string;
-  role: string;
-  path: string;
-  instruction: string;
-};
-
 const procurementDataVersion = 'full-pr-po-lifecycle-seed-2026-08-28-v12';
 
 function loadProcurementWorkItems(): ProcurementWorkItem[] {
@@ -183,30 +173,6 @@ function purchaseOrderApprovalRole(status: string) {
   return null;
 }
 
-const guidedDemoSteps: Record<string, GuidedDemoStep> = {
-  'For Procurement Review': { number: 1, title: 'Validate the Purchase Request', role: 'Procurement Officer', path: '/sourcing', instruction: 'Review the products and specifications, then complete Procurement Review.' },
-  'RFQ Draft': { number: 2, title: 'Build the Vendor Shortlist', role: 'Procurement Officer', path: '/sourcing', instruction: 'Add at least two qualified vendors, then send the category RFQs.' },
-  'RFQ Sent': { number: 3, title: 'Collect Vendor Quotations', role: 'Procurement Officer', path: '/sourcing', instruction: 'Preview the vendor email and form, mark the vendor replies Responded, then close the RFQs.' },
-  'Quotations Received': { number: 4, title: 'Validate the Quotations', role: 'Procurement Officer', path: '/sourcing', instruction: 'Review the itemized offers, add Procurement notes, and submit the quotations for technical review.' },
-  'For DT Approval': { number: 5, title: 'Complete Technical Review', role: 'DT Department', path: '/approvals', instruction: 'Open the quotation comparison, record the technical decisions and notes, then complete DT review.' },
-  'For Requester Selection': { number: 6, title: 'Select the Vendor Quotation', role: 'Requester', path: '/requests', instruction: 'Open Compare quotations, choose the preferred complete offer, and confirm the award.' },
-  'Ready for PO Creation': { number: 7, title: 'Create the Purchase Order', role: 'Procurement Officer', path: '/sourcing', instruction: 'Create the PO from the requester-selected quotation.' },
-  'PO Draft': { number: 8, title: 'Review and Submit the PO', role: 'Procurement Officer', path: '/purchase-orders', instruction: 'Review the final quotation total and submit the PO for Department Head approval.' },
-  'For Department Approval': { number: 9, title: 'Department Head Approval', role: 'Department Head', path: '/approvals', instruction: 'Review the PO and approve it for the required executive approval.' },
-  'For Finance Approval': { number: 10, title: 'Finance Approval', role: 'Finance Manager', path: '/approvals', instruction: 'Review the approved request and authorize the Purchase Order.' },
-  'For COO Approval': { number: 10, title: 'COO Approval', role: 'COO', path: '/approvals', instruction: 'Review the approved request and authorize the Purchase Order.' },
-  'For President Approval': { number: 10, title: 'President Approval', role: 'President', path: '/approvals', instruction: 'Review the approved request and authorize the Purchase Order.' },
-  'PO Approved': { number: 11, title: 'Issue the Purchase Order', role: 'Procurement Officer', path: '/purchase-orders', instruction: 'Email the approved PO to the selected vendor.' },
-  'PO Awaiting Acknowledgement': { number: 12, title: 'Record Vendor Acknowledgement', role: 'Procurement Officer', path: '/purchase-orders', instruction: 'Record the vendor acceptance and expected delivery.' },
-  'PO Acknowledged': { number: 13, title: 'Receive and Inspect the Delivery', role: 'Procurement Officer', path: '/receiving', instruction: 'Open Receiving and record the inspected delivery.' },
-  'Partially Received': { number: 13, title: 'Complete Delivery and Receiving', role: 'Procurement Officer', path: '/receiving', instruction: 'Record the remaining accepted delivery.' },
-  Received: { number: 14, title: 'Record Invoice Payment', role: 'Finance Manager', path: '/receiving', instruction: 'Verify the PO, receipt, and invoice, then mark the vendor payment complete.' },
-  Paid: { number: 15, title: 'File and Close the Record', role: 'Procurement Officer', path: '/receiving', instruction: 'File the completed procurement record for audit.' },
-  Filed: { number: 16, title: 'Demo Complete', role: 'Procurement Officer', path: '/purchase-orders', instruction: 'The PR and PO have completed every lifecycle stage. Review the final PO activity history.' },
-};
-
-const guidedDemoStepCount = 16;
-
 export default function App() {
   const [branding, setBranding] = useState<Branding>(fallbackBranding);
   const [session, setSession] = useState<AppSession>(publicDemo ? demoSession : signedOutSession);
@@ -217,7 +183,6 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [procurementPreviewRole, setProcurementPreviewRole] = useState('Procurement Officer');
   const [procurementWorkItems, setProcurementWorkItems] = useState<ProcurementWorkItem[]>(loadProcurementWorkItems);
-  const [procurementModuleInstance, setProcurementModuleInstance] = useState(0);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
   const isProcurementSuperAdmin = Boolean(session.user?.roles.some((role) => ['tenant-admin', 'super-admin'].includes(role)));
@@ -335,30 +300,6 @@ export default function App() {
     if (role !== 'Super Admin' && !(allowedByRole[role] ?? ['/dashboard']).includes(activePath)) navigate('/dashboard');
   }
 
-  const guidedDemoRecord = procurementWorkItems.find((item) => item.id === 'PR-2026-1001');
-  const guidedDemoStep = guidedDemoSteps[guidedDemoRecord?.status ?? 'For Procurement Review'] ?? guidedDemoSteps['For Procurement Review'];
-
-  function openGuidedDemoStep() {
-    window.sessionStorage.setItem('procurement-selected-request', 'PR-2026-1001');
-    window.sessionStorage.setItem('procurement-guided-open-request', 'PR-2026-1001');
-    setProcurementPreviewRole(guidedDemoStep.role);
-    navigate(guidedDemoStep.path);
-  }
-
-  function resetGuidedDemo() {
-    window.localStorage.removeItem('procurement-requests');
-    window.localStorage.removeItem('procurement-data-version');
-    Object.keys(window.localStorage)
-      .filter((key) => key.includes('PR-2026-1001') || key.includes('RFQ-2026-1001'))
-      .forEach((key) => window.localStorage.removeItem(key));
-    window.sessionStorage.setItem('procurement-selected-request', 'PR-2026-1001');
-    window.sessionStorage.setItem('procurement-guided-open-request', 'PR-2026-1001');
-    setProcurementWorkItems([]);
-    setProcurementPreviewRole('Procurement Officer');
-    setProcurementModuleInstance((current) => current + 1);
-    navigate('/sourcing');
-  }
-
   if (!session.authenticated) {
     return (
       <LoginScreen
@@ -372,7 +313,7 @@ export default function App() {
   }
 
   if (activePath.startsWith('/vendor-quotation/') || activePath.startsWith('/vendor-information/')) {
-    return <div className={`vendor-public-shell ${darkMode ? 'dark' : ''}`} style={{ '--brand-accent': branding.accent } as CSSProperties}><ProcurementModule key={`${procurementDataVersion}-${procurementModuleInstance}`} activePath={activePath} sessionUser={session.user} onNavigate={navigate} previewRole={procurementPreviewRole} onWorkItemsChange={setProcurementWorkItems} /></div>;
+    return <div className={`vendor-public-shell ${darkMode ? 'dark' : ''}`} style={{ '--brand-accent': branding.accent } as CSSProperties}><ProcurementModule key={procurementDataVersion} activePath={activePath} sessionUser={session.user} onNavigate={navigate} previewRole={procurementPreviewRole} onWorkItemsChange={setProcurementWorkItems} /></div>;
   }
 
   return (
@@ -427,14 +368,6 @@ export default function App() {
         </header>
 
         <main className="content">
-          <GuidedDemoPanel
-            recordStatus={guidedDemoRecord?.status}
-            step={guidedDemoStep}
-            currentRole={activeProcurementRole}
-            currentPath={activePath}
-            onOpen={openGuidedDemoStep}
-            onReset={resetGuidedDemo}
-          />
           {activePath === '/notifications' ? (
             <NotificationsPage role={activeProcurementRole} notifications={submissionNotifications} readIds={readNotificationIds} onRead={(id) => markNotificationsRead([id])} onReadAll={() => markNotificationsRead(submissionNotifications.flatMap((item) => item.id ? [item.id] : []))} />
           ) : activePath === '/saml-setup' ? (
@@ -442,7 +375,7 @@ export default function App() {
           ) : activePath === '/settings' ? (
             <SettingsView branding={branding} />
           ) : (
-            <ProcurementModule key={`${procurementDataVersion}-${procurementModuleInstance}`} activePath={activePath} sessionUser={session.user} onNavigate={navigate} previewRole={procurementPreviewRole} onWorkItemsChange={setProcurementWorkItems} />
+            <ProcurementModule key={procurementDataVersion} activePath={activePath} sessionUser={session.user} onNavigate={navigate} previewRole={procurementPreviewRole} onWorkItemsChange={setProcurementWorkItems} />
           )}
         </main>
       </div>
@@ -460,26 +393,6 @@ export default function App() {
       ) : null}
     </div>
   );
-}
-
-function GuidedDemoPanel({ recordStatus, step, currentRole, currentPath, onOpen, onReset }: { recordStatus?: string; step: GuidedDemoStep; currentRole: string; currentPath: string; onOpen: () => void; onReset: () => void }) {
-  const complete = recordStatus === 'Filed';
-  const inPosition = currentRole === step.role && (currentPath === step.path || currentPath.startsWith(`${step.path}/`));
-  const progress = Math.round((step.number / guidedDemoStepCount) * 100);
-
-  return <section className={`guided-demo-panel ${complete ? 'complete' : ''}`} aria-label="Guided procurement process demo">
-    <div className="guided-demo-icon" aria-hidden="true">{complete ? <CheckCircle2 size={22} /> : <Workflow size={22} />}</div>
-    <div className="guided-demo-copy">
-      <div className="guided-demo-kicker"><span>Guided actual-process demo</span><b>PR-2026-1001</b><em>Step {step.number} of {guidedDemoStepCount}</em></div>
-      <div className="guided-demo-heading"><h2>{step.title}</h2><span>{recordStatus ?? 'Ready to start'}</span></div>
-      <p><strong>{step.role}:</strong> {step.instruction}</p>
-      <div className="guided-demo-progress" role="progressbar" aria-label="Demo progress" aria-valuemin={1} aria-valuemax={guidedDemoStepCount} aria-valuenow={step.number}><span style={{ width: `${progress}%` }} /></div>
-    </div>
-    <div className="guided-demo-actions">
-      <button className="guided-demo-reset" type="button" onClick={onReset}><RotateCcw size={16} />{recordStatus ? 'Reset demo' : 'Start demo'}</button>
-      <button className="guided-demo-open" type="button" onClick={onOpen} disabled={inPosition && !complete}>{complete ? 'Review completed PO' : inPosition ? 'Current workspace' : `Open as ${step.role}`}<ChevronRight size={17} /></button>
-    </div>
-  </section>;
 }
 
 function NotificationsPage({ role, notifications, readIds, onRead, onReadAll }: { role: string; notifications: ProcurementWorkItem[]; readIds: string[]; onRead: (id: string) => void; onReadAll: () => void }) {
