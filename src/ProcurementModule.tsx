@@ -1190,7 +1190,8 @@ function VendorInformationBadge({ status }: { status: VendorInformationStatus })
 
 function VendorInformationRequestModal({ vendor, onClose, onSend }: { vendor: VendorRecord; onClose: () => void; onSend: () => void }) {
   const [validFor, setValidFor] = useState('14 days');
-  const magicLinkUrl = window.location.origin + '/vendor-information/' + encodeURIComponent(vendor.email) + '?token=prototype-secure-link&expires=' + encodeURIComponent(validFor);
+  const appBase = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const magicLinkUrl = `${window.location.origin}${appBase}/vendor-information/${encodeURIComponent(vendor.email)}?token=prototype-secure-link&expires=${encodeURIComponent(validFor)}`;
   return <div className="proc-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="proc-modal rfq-email-preview vendor-information-email-preview" role="dialog" aria-modal="true" aria-labelledby="vendor-information-title">
     <header className="vendor-preview-toolbar"><div><span className="preview-mode-badge"><Mail size={14} />Email preview</span><small>Vendor-specific secure onboarding invitation</small></div><button className="modal-close" type="button" onClick={onClose} aria-label="Close email preview"><X size={19} /></button></header>
     <div className="email-envelope"><div className="email-envelope-row"><span>From</span><b>Life College Procurement</b><small>procurement@life.edu.ph</small></div><div className="email-envelope-row"><span>To</span><b>{vendor.name}</b><small>{vendor.email}</small></div><div className="email-envelope-row subject"><span>Subject</span><b id="vendor-information-title">Complete Your Vendor Information · Life College, Inc.</b></div></div>

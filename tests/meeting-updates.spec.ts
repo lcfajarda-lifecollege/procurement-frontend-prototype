@@ -15,7 +15,12 @@ test('vendor contacts and categorized business documents persist and download', 
   await page.reload();
   await page.getByRole('button', { name: 'Meeting Supplier', exact: true }).click();
   await expect(page.locator('.vendor-profile-grid')).toContainText(['Maria Cruz']);
-  await page.goto('/vendor-information/meeting%40example.test');
+  await page.getByRole('button', { name: 'Request information', exact: true }).click();
+  const enrollmentLink = page.getByRole('link', { name: 'Open secure vendor form' });
+  await expect(enrollmentLink).toHaveAttribute('target', '_blank');
+  const enrollmentUrl = (await enrollmentLink.getAttribute('href'))!;
+  expect(new URL(enrollmentUrl).pathname).toBe(new URL(page.url()).pathname.replace(/\/vendors$/, '/vendor-information/meeting%40example.test'));
+  await page.goto(enrollmentUrl);
   await expect(page.getByLabel('Authorized contact person')).toHaveValue('Maria Cruz');
   await expect(page.getByLabel('Phone number')).toHaveValue('09171234567');
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
