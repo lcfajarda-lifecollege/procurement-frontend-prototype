@@ -29,6 +29,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import './procurement.css';
 import { RecordAttachments, type RecordAttachment } from './RecordAttachments';
+export type { PurchaseRequest, PurchaseRequestItem, VendorRecord, ProductRecord, RfqVendorQuote };
 
 type Role = 'Super Admin' | 'Procurement Admin' | 'Requester' | 'DT Department' | 'Department Head' | 'Finance Manager' | 'COO' | 'President' | 'Procurement Officer';
 type RequestStatus = 'Draft' | 'Submitted' | 'Petty Cash' | 'For DT Approval' | 'For Requester Selection' | 'Ready for PO Creation' | 'Quotations Received' | 'For Department Approval' | 'For Finance Approval' | 'For COO Approval' | 'For President Approval' | 'For Procurement Review' | 'RFQ Draft' | 'RFQ Sent' | 'PO Draft' | 'PO Approved' | 'PO Awaiting Acknowledgement' | 'PO Acknowledged' | 'Partially Received' | 'Received' | 'Paid' | 'Filed';
